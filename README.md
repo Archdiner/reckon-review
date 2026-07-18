@@ -1,72 +1,132 @@
-# Reckon Review — explain what you merge
+<div align="center">
 
-**Reckon Review is a GitHub App that blocks a pull request from merging until a human can explain,
-in their own words, the *mechanism* of what it changes.** It works on any PR, no matter who
-(or what) wrote it — Claude, Cursor, Copilot, a human. AI reviewers check the *code* is
-good; Reckon Review checks that a *human understands it* before it ships.
+```
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠞⠙⢦⠈⠀⠙⣆⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣀⣿⠀⠀⢸⠀⠀⢠⡇⠀⠳⢦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⠁⠘⣿⡀⠀⣼⠀⡴⠋⠻⡏⠀⠘⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣤⣤⣤⣤⣀⣸⣇⠀⢸⣷⠞⢷⣾⡅⠀⢠⡗⠀⡼⠛⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⣤⡀⠀⣀⠀⠀⠀⠀⠀⣀⣴⠖⠋⠉⠁⠀⠀⠀⠀⠀⠀⠉⠛⢦⣿⡏⣷⣸⣿⠂⢀⣼⡷⠎⠀⢀⡾⠁⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⢠⡞⠳⣄⡇⠀⢱⡄⠉⢷⡀⠀⣴⠞⠋⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⣿⣧⣾⣧⣄⣦⣾⢿⣳⣶⣺⣍⣀⣀⠀⣀⣀⠀⢀⠀⠀⠀
+⠀⠸⣇⠀⠘⣧⡀⠀⣧⠀⠀⣧⡾⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣷⣄⠀⠀⠀⠹⠿⢿⣿⣟⣻⡾⠁⠀⣽⠋⠀⢸⠋⠁⠀⠀⠀⠀⠀⠂
+⢠⡶⠾⠧⣄⣈⣷⣷⣈⣷⣤⡟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⣏⣻⣿⣄⠐⠖⣶⣿⣷⣿⡿⠁⢤⣾⠃⢀⡴⠿⢾⠉⠉⡿⠁⠀⡠⠂
+⠈⢧⡤⢤⣤⡖⠻⣯⡟⢿⣿⣲⣷⠀⠀⠀⢀⣤⣤⣤⠤⠾⠛⠀⠀⠀⠉⠅⠘⠀⠀⠀⠈⠙⣛⣿⣷⣾⡿⠿⠍⢁⣀⣠⠏⠀⡾⠁⠀⡄⠀⠀
+⠀⠘⣇⠀⠙⢷⡠⠾⣗⢸⣿⡿⢿⡆⠠⠴⠞⠷⠿⠿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⣉⠘⠙⢷⣄⠐⣾⠀⠀⠀⢰⠃⠀⠀⡁⠀⠀
+⠀⡤⠞⠳⠦⠈⣳⣄⣹⣾⣿⠻⠾⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⡞⣿⠳⢦⣄⣀⠀⢀⡾⠃⠙⡷⢶⠾⠉⠉⠁⠀⠀⠀⢸⡀⠀⠀⣇⠀⠀
+⠀⠳⣄⣀⣠⠼⠻⣯⡛⢻⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣧⡈⠇⠀⠈⠛⠛⠟⠓⠒⠺⢷⣤⡀⠀⠀⠀⠀⠀⠀⠈⣇⠀⠀⢸⠀⠀
+⠀⠀⢰⠎⠻⢦⣄⣈⣹⣿⣿⢿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⢦⡄⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⠓⠒⠶⢤⡀⠀⠀⣿⠀⠀⢸⡇⠀
+⠀⠀⠈⠓⠢⡔⠋⢹⠋⢀⣉⣮⡏⠛⣶⣤⣄⣀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣬⠇⠀⣸⠇⠀⠀⣸⠁⠀
+⠀⠀⠀⠀⠀⠁⠀⠘⠶⠞⠉⠋⠀⠸⣯⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣴⠞⢉⣠⡴⠚⠉⠀⠀⣰⠇⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⠒⠦⠤⠤⠤⠤⢤⣤⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⡏⠉⠉⠉⠀⠀⠀⠀⣠⡼⠁⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠛⠳⢤⣤⣀⠀⠀⠀⠀⠀⠀⣋⣀⣙⣷⠦⠤⠤⠴⠶⠛⠁⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠛⠲⠶⠖⠚⠋⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+```
 
-> Reckon Review is **hosted for you** — nothing to run, no server, no API keys to manage.
-> Free during the beta.
+# Reckon Review
+
+**explain what you merge**
+
+</div>
 
 ---
 
-## Install it (about 30 seconds)
+A GitHub App that **blocks a pull request from merging until a human can explain, in their
+own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wrote it.
 
-1. **Install Reckon Review** on your repos → [github.com/apps/reckon-review](https://github.com/apps/reckon-review/installations/new)
-   (or: your repo → Settings → GitHub Apps → Configure)
-2. **Require the check** so it actually blocks merges: repo → Settings → Branches → Branch
-   protection → require the **`Reckon comprehension`** status check (and, if you like,
-   ≥1 approving review).
-3. Done. Open a PR and Reckon Review takes it from there.
+```
+   AI reviewers                          Reckon Review
+   ─────────────                         ─────────────
+   "is the CODE good?"                   "does a HUMAN get it?"
+   bugs, style, security                 comprehension
+                         ╲             ╱
+                          ╲           ╱
+                     they STACK — one checks the code,
+                     the other checks the person shipping it
+```
+
+> 🦎 **Hosted for you.** Nothing to run, no server, no keys to manage. Free during the beta.
 
 ---
 
-## What it feels like
+## How it works
 
 ```
-  PR opened        Reckon Review posts a merge-blocking check + a comment:
-                   "explain the mechanism of what this changes"
-  you reply        in your own words - why it works, what breaks if done differently
-  Reckon Review grades it  an isolated model checks your explanation (not a summary of the diff)
-     pass          -> the check goes green, merge unblocked
-     not yet       -> it points at the one gap; you take another pass
-  push more code   -> it re-checks; unchanged decisions carry your pass forward
+   ┌─────────────┐     ┌──────────────────────┐     ┌───────────────────┐
+   │  PR opened  │────▶│  🧠 explain to merge  │────▶│   an isolated     │
+   │  (any author)│     │  (mechanism, not the │     │   model grades    │
+   └─────────────┘     │   diff) - merge BLOCKED│     │   your reply      │
+                       └──────────────────────┘     └─────────┬─────────┘
+                                                              │
+                        ┌─────────────────────────────────────┴──────┐
+                        ▼                                            ▼
+                 ✓  you got it                              ~ not yet
+                 check goes GREEN                           it names the ONE gap
+                 merge unblocked                            you take another pass
 ```
 
-Any **one** reviewer's passing explanation clears the gate. Trivial PRs (docs, lockfiles,
-tiny changes) pass automatically.
+- **push more code?** it re-checks. unchanged decisions carry your pass forward.
+- **trivial PR?** (docs, lockfiles, tiny diffs) → passes automatically.
+- **one reviewer** with write access explaining it clears the gate.
 
 ---
 
-## Privacy — what it can and can't see
+## Install it · ~30 seconds
 
 ```
-  reads    the PR's diff + the explanation comments people write
-  writes   a status check + comments on the PR
-  never    reads code outside the PR, stores your source, or touches anything else
+  1  install    ▸ github.com/apps/reckon-review/installations/new
+                  (or: repo → Settings → GitHub Apps → Configure)
+
+  2  require it  ▸ repo → Settings → Branches → Branch protection
+                  ▸ require the  "Reckon comprehension"  status check
+
+  3  done        ▸ open a PR - Reckon Review takes it from there
 ```
+
+👉 **[Install Reckon Review](https://github.com/apps/reckon-review/installations/new)**
+
+---
+
+## What it can (and can't) see
+
+```
+   reads   ▸ the PR's diff + the explanation comments people write
+   writes  ▸ a status check + comments on the PR
+   never   ▸ reads code outside the PR · stores your source · touches anything else
+```
+
+---
 
 ## FAQ
 
-- **Cost?** Free during the beta — we cover the grading.
-- **Who has to explain it?** Any one reviewer with write access. One good explanation clears it.
-- **Does it run my tests / interfere with CI?** No. It's a separate status check that sits
-  alongside your CI; it runs no code.
-- **Turn it off?** Uninstall the App, or drop the required check from branch protection.
+```
+  Cost?              free during the beta - we cover the grading.
+  Who explains it?   any one reviewer with write access. one good explanation clears it.
+  Interfere with CI? no. a separate status check alongside your CI. it runs no code.
+  Turn it off?       uninstall the App, or drop the required check.
+```
 
-## Beta
-
-Reckon Review is early. If the grader ever seems wrong or the flow feels off, that's exactly the
-feedback we want — open an issue.
+**Beta** — if the grader ever seems wrong or the flow feels off, that's exactly the feedback
+we want. Open an issue.
 
 ---
 
 <details>
-<summary>Run your own instance (advanced / contributing)</summary>
+<summary>🛠  Run your own instance (advanced / contributing)</summary>
 
-Reckon Review is hosted, so you don't need this. But the code is open. To self-host: it's a Probot
-app (`src/app.ts`) reusing `@reckon/core`'s grader/decompose, with an OpenAI backend and a
-Supabase store. You'll need a GitHub App registration, a Supabase project (`schema.sql`), an
-OpenAI key, and a host (see `Dockerfile` / `fly.toml`). `ARCHITECTURE.md` has the details.
+<br>
+
+You don't need this — Reckon Review is hosted. But the code is open. It's a Probot app
+(`src/app.ts`) reusing `@reckon/core`'s grader + decompose, with an OpenAI backend and a
+Supabase store.
+
+```
+   GitHub ──webhook──▶  Reckon Review (Probot)  ──▶  @reckon/core  ──▶  OpenAI
+                              │
+                              ▼
+                        Supabase (Postgres)
+```
+
+You'll need: a GitHub App registration, a Supabase project (`schema.sql`), an OpenAI key,
+and a host (`Dockerfile` / `fly.toml`). See `ARCHITECTURE.md` for the full build.
 
 </details>
