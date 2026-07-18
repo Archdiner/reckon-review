@@ -45,3 +45,14 @@ export function classify(files: string[], diff: string): Classification {
 export function decisionsToGroundTruth(decisions: Decision[]): string {
   return decisions.map((d, i) => `${i + 1}. ${d.concept}: ${d.summary}`).join('\n\n');
 }
+
+/**
+ * Exponential backoff with full jitter, for retrying transient GitHub / OpenAI failures.
+ * The delay doubles each attempt so a struggling upstream isn't retried in tight lockstep;
+ * the cap bounds worst-case wait; and returning a random value in [0, window) (full jitter)
+ * desynchronizes concurrent retriers so they don't all wake at the same instant and stampede.
+ */
+export function backoffMs(attempt: number, baseMs = 500, capMs = 8000): number {
+  const window = Math.min(capMs, baseMs * 2 ** Math.max(0, attempt));
+  return Math.floor(Math.random() * window);
+}
