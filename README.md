@@ -25,7 +25,7 @@ understands it* before it ships.
 ```
 
 Any **one** reviewer's passing explanation satisfies the gate. Branch protection requiring
-the `Reckon — comprehension` check is what actually blocks the merge.
+the `Reckon comprehension` check is what actually blocks the merge.
 
 ---
 
@@ -93,7 +93,7 @@ PR, and the check + comment appear against your local process.
 ### 6. Go live
 Host the container anywhere (`npm start` = `probot run ./dist/app.js`), point the App's
 Webhook URL at it, then in the repo: **Settings → Branches → require the
-`Reckon — comprehension` status check** (+ require ≥1 approving review). That's the merge block.
+`Reckon comprehension` status check** (+ require ≥1 approving review). That's the merge block.
 
 ### 7. Dogfood
 Install the App on **this repo** and open PRs here. As OWNER your own comments clear the

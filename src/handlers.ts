@@ -63,7 +63,7 @@ async function openGate(context: any, deps: Deps): Promise<void> {
     repo_id: repository.id, pr_number: pr.number, pr_node_id: pr.node_id, head_sha: pr.head.sha,
     check_run_id, decisions, decisions_hash: hash(JSON.stringify(decisions)), rigor: deps.rigor,
   });
-  await gh.postComment(octokit, owner, repo, pr.number, elicitBody(repository.name, decisions));
+  await gh.postComment(octokit, owner, repo, pr.number, elicitBody(decisions));
 }
 
 export async function onPullRequestOpened(context: any, deps: Deps): Promise<void> {
@@ -112,7 +112,7 @@ export async function onPullRequestSynchronize(context: any, deps: Deps): Promis
     repo_id: repository.id, pr_number: pr.number, pr_node_id: pr.node_id, head_sha: pr.head.sha,
     check_run_id, decisions, decisions_hash: newHash, rigor: deps.rigor,
   });
-  await gh.postComment(octokit, owner, repo, pr.number, elicitBody(repository.name, decisions));
+  await gh.postComment(octokit, owner, repo, pr.number, elicitBody(decisions));
 }
 
 export async function onIssueComment(context: any, deps: Deps): Promise<void> {

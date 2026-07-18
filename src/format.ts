@@ -1,37 +1,43 @@
-import { planElicitPrompt, retryPrompt } from '@reckon/core';
 import type { Decision } from '@reckon/core';
 
-const CHECK_NAME = 'Reckon — comprehension';
-export const RECKON_CHECK = CHECK_NAME;
+export const RECKON_CHECK = 'Reckon comprehension';
 
-/** The elicit comment: the mechanism prompt grounded in this PR's decomposed decisions. */
-export function elicitBody(subsystem: string, decisions: Decision[]): string {
+/**
+ * The elicit comment. Lists the decision TOPICS only (labels, never the summaries - handing
+ * over the answer invites parroting) and asks for the mechanism. PR-native voice.
+ */
+export function elicitBody(decisions: Decision[]): string {
+  const topics = decisions.length
+    ? decisions.map((d, i) => `${i + 1}. ${d.concept}`).join('\n')
+    : '(the change as a whole)';
   return [
-    '### 🧠 Reckon — explain to merge',
+    '### 🧠 Reckon: explain to merge',
     '',
-    planElicitPrompt(subsystem, decisions),
+    'Before this merges, explain the mechanism of what it changes, in your own words:',
+    'why it works, and what breaks if done differently. Not a summary of the diff.',
     '',
-    '_Reply in this thread with your explanation — the **mechanism** (why it works, what breaks',
-    'if done differently), not a restatement of the diff. An isolated grader checks it; the merge',
-    'stays blocked until it passes._',
+    'Cover:',
+    topics,
+    '',
+    'Reply in this thread. An isolated grader checks it, and the merge stays blocked until it passes.',
   ].join('\n');
 }
 
-/** Rescue reply on a failed grade — the single hole, phrased as a re-explanation prompt. */
+/** Rescue reply on a failed grade: the single hole the grader surfaced. */
 export function rescueBody(hole: string): string {
-  return ['### 🧠 Close — one more pass', '', retryPrompt(hole, true)].join('\n');
+  return ['### 🧠 Close, one more pass', '', hole, '', 'Reply again in this thread.'].join('\n');
 }
 
 export function passBody(login: string): string {
-  return `### ✓ Comprehension passed\n\n@${login} explained the mechanism — merge unblocked.`;
+  return `### ✓ Comprehension passed\n\n@${login} explained the mechanism. Merge unblocked.`;
 }
 
-/** Grader outage: neutral (not passed, not wedged) + a loud nudge for a human. */
+/** Grader outage: neutral (not passed, not wedged) plus a clear nudge. */
 export function ungradedBody(note: string): string {
   return [
     '### ⚠ Reckon grader unavailable',
     '',
-    `Could not grade this explanation (${note}). The check is **neutral, not passed** — a human`,
-    'should confirm understanding before merging.',
+    `Could not grade this (${note}). The check is neutral, not passed.`,
+    'A human should confirm understanding before merging.',
   ].join('\n');
 }
