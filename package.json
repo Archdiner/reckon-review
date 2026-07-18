@@ -1,0 +1,21 @@
+{
+  "name": "reckon-pr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reckon comprehension gate for GitHub pull requests (any author, any tool).",
+  "scripts": {
+    "build": "tsc",
+    "roundtrip": "tsx src/roundtrip.ts"
+  },
+  "dependencies": {
+    "@reckon/core": "file:../reckon/packages/core",
+    "@supabase/supabase-js": "^2.45.0",
+    "openai": "^4.67.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}
