@@ -126,7 +126,7 @@ Supabase store.
                         Supabase (Postgres)
 ```
 
-You'll need: a GitHub App registration, a Supabase project (`schema.sql`), an OpenAI key,
-and a host (`Dockerfile` / `fly.toml`). See `ARCHITECTURE.md` for the full build.
+You'll need: a GitHub App registration, a Supabase project (`db/schema.sql`), an OpenAI key,
+and a host (`Dockerfile` / `fly.toml`). See `docs/ARCHITECTURE.md` for the full build.
 
 </details>

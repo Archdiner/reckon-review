@@ -8,3 +8,7 @@ dist
 .DS_Store
 Dockerfile
 fly.toml
+docs
+db
+*.md
+.github
