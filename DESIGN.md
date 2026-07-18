@@ -1,8 +1,8 @@
-# Reckon-PR — the comprehension gate for GitHub pull requests
+# Reckon Review — the comprehension gate for GitHub pull requests
 
 **Status:** design draft, 2026-07-18
 **Sister to:** `reckon-mcp` (the Claude Code comprehension loop)
-**One line:** Reckon-PR moves the comprehension checkpoint to where modern AI teams
+**One line:** Reckon Review moves the comprehension checkpoint to where modern AI teams
 actually ship — the pull request — and blocks the merge until a human can explain, in
 their own words, the *mechanism* of what the agent built.
 
@@ -34,23 +34,23 @@ problem.
 
 ---
 
-## 2. Positioning — Reckon-PR vs AI reviewers (CodeRabbit, Greptile, Copilot)
+## 2. Positioning — Reckon Review vs AI reviewers (CodeRabbit, Greptile, Copilot)
 
 They are **opposite vectors on the same pipeline**, and they stack:
 
 ```
   CodeRabbit:  AI ──► human    does the understanding FOR you.  OFFLOADS comprehension.
-  Reckon-PR:   human ──► AI     forces YOU to produce it.        INSOURCES comprehension.
+  Reckon Review:   human ──► AI     forces YOU to produce it.        INSOURCES comprehension.
 
   agent writes ─► CodeRabbit: "is the CODE good?"   (bugs, style — machine-graded)
-               ─► Reckon-PR:  "does the HUMAN get it?" (comprehension-graded)
+               ─► Reckon Review:  "does the HUMAN get it?" (comprehension-graded)
                ─► merge
 ```
 
 A PR can be fully CodeRabbit-approved and understood by **no human on the team.** That is
-exactly Reckon-PR's failure mode. So the better AI reviewers get, the more they raise code
+exactly Reckon Review's failure mode. So the better AI reviewers get, the more they raise code
 quality *and lower human understanding at the same time* — they make it easier to merge
-code nobody grasped ("the AI said it's fine, click merge"). Reckon-PR is the counterweight.
+code nobody grasped ("the AI said it's fine, click merge"). Reckon Review is the counterweight.
 It does not compete with AI reviewers; it makes them safe.
 
 ---
@@ -59,7 +59,7 @@ It does not compete with AI reviewers; it makes them safe.
 
 The comprehension loop is already client-agnostic in `reckon-mcp`: `loop.ts` takes ground
 truth as an *input*, the grader is pure text-in/verdict-out, storage is injected. The only
-Claude-Code-specific wire is the grader *backend* (`claude -p`). Reckon-PR is the second
+Claude-Code-specific wire is the grader *backend* (`claude -p`). Reckon Review is the second
 client — which is what finally justifies extracting the shared core (with one client the
 seam was speculative; with two it is earned).
 

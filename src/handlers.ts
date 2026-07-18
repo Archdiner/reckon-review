@@ -10,17 +10,36 @@ import type { Decision } from '@reckon/core';
 import type { LlmBackend } from '@reckon/core';
 import { SupabaseStore } from './store/supabase.js';
 import * as gh from './github.js';
-import { elicitBody, rescueBody, passBody, ungradedBody } from './format.js';
+import { elicitBody, rescueBody, passBody, ungradedBody, cappedBody } from './format.js';
 import { hash, classify, decisionsToGroundTruth } from './util.js';
 
 export interface Deps {
   store: SupabaseStore;
   backend: LlmBackend;
   rigor: 'medium' | 'harsh';
+  dailyPerInstall: number;
+  dailyGlobal: number;
 }
 
 // Only treat comments from someone with review standing as explanation attempts.
 const REVIEWER_ASSOC = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Beta cost guardrail: which daily limit (if any) is hit, checked BEFORE the decompose call
+ *  so a capped install costs no OpenAI. Counts new gates in a rolling 24h window. */
+async function overLimit(context: any, deps: Deps): Promise<'install' | 'global' | null> {
+  const installId = context.payload.installation?.id;
+  if (!installId) return null;
+  const since = new Date(Date.now() - DAY_MS).toISOString();
+  const [perInstall, global] = await Promise.all([
+    deps.store.countInstallGatesSince(installId, since),
+    deps.store.countGlobalGatesSince(since),
+  ]);
+  if (global >= deps.dailyGlobal) return 'global';
+  if (perInstall >= deps.dailyPerInstall) return 'install';
+  return null;
+}
 
 /** Persist the FK parents (installation + repo). Idempotent; safe to call on any event. */
 async function upsertParents(context: any, deps: Deps): Promise<void> {
@@ -53,6 +72,13 @@ async function openGate(context: any, deps: Deps): Promise<void> {
   const cls = classify(files, diff);
   if (cls.trivial) {
     await gh.createSuccessCheck(octokit, owner, repo, pr.head.sha, 'Trivial — no comprehension needed', cls.reason);
+    return;
+  }
+
+  const capped = await overLimit(context, deps);
+  if (capped) {
+    await gh.createNeutralCheck(octokit, owner, repo, pr.head.sha, 'Reckon Review beta limit', `${capped} daily beta limit reached`);
+    await gh.postComment(octokit, owner, repo, pr.number, cappedBody(capped));
     return;
   }
 
@@ -92,6 +118,13 @@ export async function onPullRequestSynchronize(context: any, deps: Deps): Promis
   const cls = classify(files, diff);
   if (cls.trivial) {
     await gh.createSuccessCheck(octokit, owner, repo, pr.head.sha, 'Trivial — no comprehension needed', cls.reason);
+    return;
+  }
+
+  const capped = await overLimit(context, deps);
+  if (capped) {
+    await gh.createNeutralCheck(octokit, owner, repo, pr.head.sha, 'Reckon Review beta limit', `${capped} daily beta limit reached`);
+    await gh.postComment(octokit, owner, repo, pr.number, cappedBody(capped));
     return;
   }
 

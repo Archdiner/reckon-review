@@ -6,6 +6,9 @@ export interface Config {
   supabaseSecretKey: string;
   openaiApiKey: string;
   graderModel: string;
+  /** Beta cost guardrails: max new gates (decompose calls) per rolling 24h. */
+  dailyPerInstall: number;
+  dailyGlobal: number;
 }
 
 export function loadConfig(): Config {
@@ -20,5 +23,7 @@ export function loadConfig(): Config {
     openaiApiKey: req('OPENAI_API_KEY'),
     // gpt-5.4-mini: current-gen, caught slop in the probe, ~2s (fine on the async PR flow).
     graderModel: process.env.RECKON_GRADER_MODEL || 'gpt-5.4-mini',
+    dailyPerInstall: Number(process.env.RECKON_DAILY_PER_INSTALL || 20),
+    dailyGlobal: Number(process.env.RECKON_DAILY_GLOBAL || 500),
   };
 }

@@ -32,6 +32,19 @@ export function passBody(login: string): string {
   return `### ✓ Comprehension passed\n\n@${login} explained the mechanism. Merge unblocked.`;
 }
 
+/** Beta rate-limit reached: not blocking, just skipped for today. */
+export function cappedBody(scope: 'install' | 'global'): string {
+  const which = scope === 'install'
+    ? "this account has hit today's Reckon Review beta limit"
+    : "Reckon Review has hit today's global beta limit";
+  return [
+    '### ⏳ Reckon Review — beta limit reached',
+    '',
+    `${which}, so this PR was not gated. The check is neutral (not blocking) — merge as normal.`,
+    'Try again tomorrow.',
+  ].join('\n');
+}
+
 /** Grader outage: neutral (not passed, not wedged) plus a clear nudge. */
 export function ungradedBody(note: string): string {
   return [

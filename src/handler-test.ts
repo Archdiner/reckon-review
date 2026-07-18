@@ -59,7 +59,7 @@ const commentCtx = (octokit: any, body: string) => ({ octokit, payload: {
 async function main() {
   const cfg = loadConfig();
   const store = new SupabaseStore(cfg.supabaseUrl, cfg.supabaseSecretKey);
-  const deps: Deps = { store, backend: new OpenAiBackend(cfg.openaiApiKey, cfg.graderModel), rigor: 'medium' };
+  const deps: Deps = { store, backend: new OpenAiBackend(cfg.openaiApiKey, cfg.graderModel), rigor: 'medium', dailyPerInstall: 1000, dailyGlobal: 10000 };
   let failed = false;
   const step = (ok: boolean, label: string, extra = '') => { console.log(`  ${ok ? '✓' : '✗'} ${label}${extra ? '  ' + extra : ''}`); if (!ok) failed = true; };
 

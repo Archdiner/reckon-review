@@ -145,6 +145,31 @@ export class SupabaseStore {
     return count ?? 0;
   }
 
+  /** Count gates (checkpoints) created for an installation's repos since a timestamp. */
+  async countInstallGatesSince(installationId: number, sinceIso: string): Promise<number> {
+    const { data: repos, error: e1 } = await this.db.from('repos').select('id').eq('installation_id', installationId);
+    if (e1) throw new Error(`countInstallGatesSince(repos): ${e1.message}`);
+    const ids = (repos ?? []).map((r: any) => r.id);
+    if (ids.length === 0) return 0;
+    const { count, error } = await this.db
+      .from('checkpoints')
+      .select('*', { count: 'exact', head: true })
+      .in('repo_id', ids)
+      .gte('created_at', sinceIso);
+    if (error) throw new Error(`countInstallGatesSince: ${error.message}`);
+    return count ?? 0;
+  }
+
+  /** Count all gates created since a timestamp (global cost ceiling). */
+  async countGlobalGatesSince(sinceIso: string): Promise<number> {
+    const { count, error } = await this.db
+      .from('checkpoints')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', sinceIso);
+    if (error) throw new Error(`countGlobalGatesSince: ${error.message}`);
+    return count ?? 0;
+  }
+
   /** Deleting an installation cascades to its repos → checkpoints → attempts. */
   async deleteInstallation(id: number): Promise<void> {
     const { error } = await this.db.from('installations').delete().eq('id', id);

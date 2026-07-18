@@ -42,6 +42,14 @@ export async function createSuccessCheck(octokit: any, owner: string, repo: stri
   });
 }
 
+/** Create a fresh neutral check on a commit (beta rate-limit: not blocking, not a pass). */
+export async function createNeutralCheck(octokit: any, owner: string, repo: string, head_sha: string, title: string, summary: string): Promise<void> {
+  await octokit.checks.create({
+    owner, repo, name: RECKON_CHECK, head_sha, status: 'completed', conclusion: 'neutral',
+    output: { title, summary },
+  });
+}
+
 /** Grader outage: neutral does not block merge but is clearly not a pass. */
 export async function setCheckNeutral(octokit: any, owner: string, repo: string, check_run_id: number, summary: string): Promise<void> {
   await octokit.checks.update({

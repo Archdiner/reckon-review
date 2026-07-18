@@ -18,6 +18,8 @@ export default function app(probot: Probot): void {
     store: new SupabaseStore(cfg.supabaseUrl, cfg.supabaseSecretKey),
     backend: new OpenAiBackend(cfg.openaiApiKey, cfg.graderModel),
     rigor: 'medium',
+    dailyPerInstall: cfg.dailyPerInstall,
+    dailyGlobal: cfg.dailyGlobal,
   };
 
   // ACK the webhook immediately, then process in the BACKGROUND. decompose/grade take

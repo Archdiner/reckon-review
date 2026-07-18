@@ -1,4 +1,4 @@
-# Reckon-PR — architecture & build spec (v1)
+# Reckon Review — architecture & build spec (v1)
 
 **Status:** build spec, 2026-07-18
 **Reads with:** `DESIGN.md` (rationale). This file is the *how* — DB, event flow, GitHub
@@ -24,7 +24,7 @@ can be added later without a migration).
 ## 1. System shape
 
 ```
-   GitHub ──webhooks──►  Reckon-PR app  ──►  @reckon/core  ──►  OpenAI (grader)
+   GitHub ──webhooks──►  Reckon Review app  ──►  @reckon/core  ──►  OpenAI (grader)
      ▲                    (Probot/Node)          │
      │                         │                 ▼
      └──── Checks / Comments ──┘             Postgres (state)
