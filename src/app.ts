@@ -10,7 +10,7 @@ import type { Probot } from 'probot';
 import { loadConfig } from './config.js';
 import { OpenAiBackend } from './grader/openai.js';
 import { SupabaseStore } from './store/supabase.js';
-import { onPullRequestOpened, onIssueComment, type Deps } from './handlers.js';
+import { onPullRequestOpened, onPullRequestSynchronize, onIssueComment, type Deps } from './handlers.js';
 
 export default function app(probot: Probot): void {
   const cfg = loadConfig();
@@ -25,6 +25,14 @@ export default function app(probot: Probot): void {
       await onPullRequestOpened(context, deps);
     } catch (err: any) {
       context.log.error({ err: err?.message || err }, 'reckon: pull_request handler failed');
+    }
+  });
+
+  probot.on('pull_request.synchronize', async (context) => {
+    try {
+      await onPullRequestSynchronize(context, deps);
+    } catch (err: any) {
+      context.log.error({ err: err?.message || err }, 'reckon: synchronize handler failed');
     }
   });
 

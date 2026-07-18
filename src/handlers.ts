@@ -11,7 +11,7 @@ import type { LlmBackend } from '@reckon/core';
 import { SupabaseStore } from './store/supabase.js';
 import * as gh from './github.js';
 import { elicitBody, rescueBody, passBody, ungradedBody } from './format.js';
-import { hash, isTrivial, decisionsToGroundTruth } from './util.js';
+import { hash, classify, decisionsToGroundTruth } from './util.js';
 
 export interface Deps {
   store: SupabaseStore;
@@ -22,52 +22,96 @@ export interface Deps {
 // Only treat comments from someone with review standing as explanation attempts.
 const REVIEWER_ASSOC = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
-export async function onPullRequestOpened(context: any, deps: Deps): Promise<void> {
-  const pr = context.payload.pull_request;
-  if (pr.draft) return; // wait for ready_for_review
+/** Persist the FK parents (installation + repo). Idempotent; safe to call on any event. */
+async function upsertParents(context: any, deps: Deps): Promise<void> {
   const repository = context.payload.repository;
   const installation = context.payload.installation;
+  if (!installation) return;
+  await deps.store.upsertInstallation({
+    id: installation.id,
+    account_login: repository.owner.login,
+    account_type: repository.owner.type || 'Organization',
+  });
+  await deps.store.upsertRepo({
+    id: repository.id,
+    installation_id: installation.id,
+    full_name: repository.full_name,
+    default_branch: repository.default_branch,
+  });
+}
+
+/** Open a fresh comprehension gate on a PR's current head: pending check + checkpoint + elicit. */
+async function openGate(context: any, deps: Deps): Promise<void> {
+  const pr = context.payload.pull_request;
+  const repository = context.payload.repository;
   const owner = repository.owner.login;
   const repo = repository.name;
   const octokit = context.octokit;
 
-  // Persist the FK parents (idempotent).
-  if (installation) {
-    await deps.store.upsertInstallation({
-      id: installation.id,
-      account_login: repository.owner.login,
-      account_type: repository.owner.type || 'Organization',
-    });
-    await deps.store.upsertRepo({
-      id: repository.id,
-      installation_id: installation.id,
-      full_name: repository.full_name,
-      default_branch: repository.default_branch,
-    });
-  }
-
   const files = await gh.fetchFiles(octokit, owner, repo, pr.number);
-  if (isTrivial(files)) {
-    await gh.setCheckTrivial(octokit, owner, repo, pr.head.sha);
+  const diff = await gh.fetchDiff(octokit, owner, repo, pr.number);
+  const cls = classify(files, diff);
+  if (cls.trivial) {
+    await gh.createSuccessCheck(octokit, owner, repo, pr.head.sha, 'Trivial — no comprehension needed', cls.reason);
     return;
   }
 
-  const diff = await gh.fetchDiff(octokit, owner, repo, pr.number);
   const d = await decompose(diff, deps.backend);
   const decisions: Decision[] = d.ok ? d.decisions : [];
-
   const check_run_id = await gh.createPendingCheck(octokit, owner, repo, pr.head.sha);
   await deps.store.createCheckpoint({
-    repo_id: repository.id,
-    pr_number: pr.number,
-    pr_node_id: pr.node_id,
-    head_sha: pr.head.sha,
-    check_run_id,
-    decisions,
-    decisions_hash: hash(JSON.stringify(decisions)),
-    rigor: deps.rigor,
+    repo_id: repository.id, pr_number: pr.number, pr_node_id: pr.node_id, head_sha: pr.head.sha,
+    check_run_id, decisions, decisions_hash: hash(JSON.stringify(decisions)), rigor: deps.rigor,
   });
+  await gh.postComment(octokit, owner, repo, pr.number, elicitBody(repository.name, decisions));
+}
 
+export async function onPullRequestOpened(context: any, deps: Deps): Promise<void> {
+  if (context.payload.pull_request.draft) return; // wait for ready_for_review
+  await upsertParents(context, deps);
+  await openGate(context, deps);
+}
+
+/**
+ * A new push to the PR (D3). Re-decompose; if the load-bearing decisions are UNCHANGED since
+ * a prior pass, carry that pass forward onto the new head (don't re-quiz on a typo fix). If
+ * they changed (or it never passed), re-gate on the new head — this closes the
+ * "pass then push slop" hole.
+ */
+export async function onPullRequestSynchronize(context: any, deps: Deps): Promise<void> {
+  const pr = context.payload.pull_request;
+  if (pr.draft) return;
+  const repository = context.payload.repository;
+  const owner = repository.owner.login;
+  const repo = repository.name;
+  const octokit = context.octokit;
+  await upsertParents(context, deps);
+
+  const files = await gh.fetchFiles(octokit, owner, repo, pr.number);
+  const diff = await gh.fetchDiff(octokit, owner, repo, pr.number);
+  const cls = classify(files, diff);
+  if (cls.trivial) {
+    await gh.createSuccessCheck(octokit, owner, repo, pr.head.sha, 'Trivial — no comprehension needed', cls.reason);
+    return;
+  }
+
+  const d = await decompose(diff, deps.backend);
+  const decisions: Decision[] = d.ok ? d.decisions : [];
+  const newHash = hash(JSON.stringify(decisions));
+  const latest = await deps.store.findLatestCheckpoint(repository.id, pr.number);
+
+  if (latest && latest.status === 'passed' && latest.decisions_hash === newHash) {
+    await gh.createSuccessCheck(octokit, owner, repo, pr.head.sha, 'Comprehension carried forward', 'Load-bearing decisions unchanged since the passing explanation.');
+    await deps.store.updateCheckpointHead(latest.id, pr.head.sha);
+    return;
+  }
+
+  // Decisions changed, or never passed → re-gate on the new head.
+  const check_run_id = await gh.createPendingCheck(octokit, owner, repo, pr.head.sha);
+  await deps.store.createCheckpoint({
+    repo_id: repository.id, pr_number: pr.number, pr_node_id: pr.node_id, head_sha: pr.head.sha,
+    check_run_id, decisions, decisions_hash: newHash, rigor: deps.rigor,
+  });
   await gh.postComment(octokit, owner, repo, pr.number, elicitBody(repository.name, decisions));
 }
 

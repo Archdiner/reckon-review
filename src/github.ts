@@ -33,11 +33,12 @@ export async function setCheckSuccess(octokit: any, owner: string, repo: string,
   });
 }
 
-/** Trivial PRs (docs/lockfiles) pass immediately with no comprehension needed. */
-export async function setCheckTrivial(octokit: any, owner: string, repo: string, head_sha: string): Promise<void> {
+/** Create a fresh check already in the success state on a given commit (trivial PRs, or
+ *  carrying a prior pass forward onto a new head after a push). */
+export async function createSuccessCheck(octokit: any, owner: string, repo: string, head_sha: string, title: string, summary: string): Promise<void> {
   await octokit.checks.create({
     owner, repo, name: RECKON_CHECK, head_sha, status: 'completed', conclusion: 'success',
-    output: { title: 'Trivial — no comprehension needed', summary: 'Only docs/lockfile changes.' },
+    output: { title, summary },
   });
 }
 

@@ -10,12 +10,18 @@ import { SupabaseStore } from './store/supabase.js';
 
 const INST = 999000011, REPO = 999000012, PR = 77;
 
-const diff = `PR — resilient webhook delivery.
-1. Retry: replace fixed 1s retry with exponential backoff (1s,2s,4s,8s)+jitter — a fixed
-   interval synchronizes failing senders into a thundering herd against a recovering
-   consumer; backoff+jitter spreads retries so a downed consumer isn't re-hammered in lockstep.
-2. Idempotency: attach a delivery UUID and dedupe on the consumer so a retried delivery after
-   a timeout doesn't double-process.`;
+// A real unified diff (has +/- lines so classify() sees a substantive change).
+const diff = `diff --git a/src/webhook.ts b/src/webhook.ts
+@@ -10,7 +10,14 @@ export async function deliver(msg: Msg) {
+-  await retryAfter(1000); // fixed 1s retry
++  // Exponential backoff (1s,2s,4s,8s) + jitter: a fixed interval synchronizes all failing
++  // senders into a thundering herd against a recovering consumer; backoff+jitter spreads
++  // retries so a downed consumer isn't re-hammered in lockstep.
++  await retryAfter(backoffWithJitter(attempt));
++  // Idempotency: attach a delivery UUID and dedupe on the consumer so a retried delivery
++  // after a timeout doesn't double-process.
++  msg.deliveryId = msg.deliveryId ?? randomUUID();
++  await consumer.send(msg);`;
 const good = `A fixed 1s retry makes every sender that failed together retry in lockstep, so the
 moment the downed consumer recovers the whole fleet hits it at once and it falls over again —
 a self-inflicted thundering herd. Backoff+jitter desynchronizes them: each waits a growing

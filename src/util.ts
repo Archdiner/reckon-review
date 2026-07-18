@@ -5,12 +5,39 @@ export function hash(s: string): string {
   return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
 }
 
-// A PR is trivial (auto-pass, no comprehension needed) when every changed file is docs,
-// a lockfile, or plain text. Deliberately conservative — a single source file makes it
-// non-trivial. Placeholder for a fuller classifier later.
-const TRIVIAL = [/\.md$/i, /\.txt$/i, /^docs\//i, /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/i];
-export function isTrivial(files: string[]): boolean {
-  return files.length > 0 && files.every((f) => TRIVIAL.some((re) => re.test(f)));
+// Files that never carry load-bearing decisions — docs, lockfiles, licenses, CI config.
+const TRIVIAL_FILE = [
+  /\.md$/i, /\.txt$/i, /\.rst$/i, /^docs\//i, /(^|\/)(LICENSE|CHANGELOG|CODEOWNERS)/i,
+  /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|go\.sum|poetry\.lock|composer\.lock)$/i,
+  /^\.github\//i, /\.editorconfig$/i, /\.gitignore$/i,
+];
+// Machine-generated / vendored — changes here aren't the human's to explain.
+const GENERATED = [/(^|\/)(dist|build|out|coverage|vendor|node_modules|generated)\//i, /\.min\.(js|css)$/i, /\.snap$/i, /\.map$/i];
+
+// How many meaningful diff lines are too few to be worth a comprehension gate.
+const TINY_CHANGE_LINES = 8;
+
+export interface Classification {
+  trivial: boolean;
+  reason: string;
+}
+
+/**
+ * Fuller than a docs-only check: a PR is trivial (auto-pass) when every changed file is
+ * docs/lockfile/generated, OR the substantive change is tiny. Otherwise it's gated.
+ * Conservative on the safe side — when unsure, gate.
+ */
+export function classify(files: string[], diff: string): Classification {
+  if (files.length === 0) return { trivial: true, reason: 'no files changed' };
+  const meaningful = files.filter((f) => !TRIVIAL_FILE.some((r) => r.test(f)) && !GENERATED.some((r) => r.test(f)));
+  if (meaningful.length === 0) return { trivial: true, reason: 'only docs/lockfile/generated files' };
+
+  const lines = diff.split('\n');
+  const added = lines.filter((l) => l.startsWith('+') && !l.startsWith('+++')).length;
+  const removed = lines.filter((l) => l.startsWith('-') && !l.startsWith('---')).length;
+  if (added + removed <= TINY_CHANGE_LINES) return { trivial: true, reason: `tiny change (${added + removed} lines)` };
+
+  return { trivial: false, reason: `${meaningful.length} substantive file(s), ${added + removed} changed lines` };
 }
 
 // The decompose output IS the grading reference — a faithful list of the PR's load-bearing

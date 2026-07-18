@@ -107,6 +107,29 @@ export class SupabaseStore {
     if (error) throw new Error(`markCheckpointPassed: ${error.message}`);
   }
 
+  /** The most recent checkpoint for a PR, any status — used on synchronize (new push). */
+  async findLatestCheckpoint(repo_id: number, pr_number: number): Promise<CheckpointRow | null> {
+    const { data, error } = await this.db
+      .from('checkpoints')
+      .select('*')
+      .eq('repo_id', repo_id)
+      .eq('pr_number', pr_number)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(`findLatestCheckpoint: ${error.message}`);
+    return (data as CheckpointRow) ?? null;
+  }
+
+  /** Carry a passed checkpoint forward onto a new head (decisions unchanged after a push). */
+  async updateCheckpointHead(id: string, head_sha: string): Promise<void> {
+    const { error } = await this.db
+      .from('checkpoints')
+      .update({ head_sha, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw new Error(`updateCheckpointHead: ${error.message}`);
+  }
+
   async getCheckpoint(id: string): Promise<CheckpointRow | null> {
     const { data, error } = await this.db.from('checkpoints').select('*').eq('id', id).maybeSingle();
     if (error) throw new Error(`getCheckpoint: ${error.message}`);
