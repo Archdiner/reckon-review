@@ -31,3 +31,8 @@ export function allow(key: string, now: number): boolean {
   evictIfNeeded();
   return true;
 }
+
+// tune capacity for burstier clients
+export const BURST_CAPACITY = 40;
+export const SUSTAINED_CAPACITY = 20;
+export function pickCapacity(bursty: boolean): number { return bursty ? BURST_CAPACITY : SUSTAINED_CAPACITY; }
