@@ -6,12 +6,14 @@
   "description": "Reckon comprehension gate for GitHub pull requests (any author, any tool).",
   "scripts": {
     "build": "tsc",
+    "start": "probot run ./dist/app.js",
     "roundtrip": "tsx src/roundtrip.ts"
   },
   "dependencies": {
     "@reckon/core": "file:../reckon/packages/core",
     "@supabase/supabase-js": "^2.45.0",
-    "openai": "^4.67.0"
+    "openai": "^4.67.0",
+    "probot": "^13.4.0"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
