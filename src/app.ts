@@ -20,27 +20,24 @@ export default function app(probot: Probot): void {
     rigor: 'medium',
   };
 
-  probot.on(['pull_request.opened', 'pull_request.ready_for_review'], async (context) => {
-    try {
-      await onPullRequestOpened(context, deps);
-    } catch (err: any) {
-      context.log.error({ err: err?.message || err }, 'reckon: pull_request handler failed');
-    }
+  // ACK the webhook immediately, then process in the BACKGROUND. decompose/grade take
+  // several seconds; awaiting them inside the handler would hold GitHub's connection past its
+  // ~10s delivery timeout under load and trigger duplicate retries. We fire-and-forget so
+  // Probot returns 200 in milliseconds. Trade-off: a background failure is logged but not
+  // retried by GitHub (a re-push re-triggers); a durable queue is the scale-up answer.
+  const bg = (name: string, p: Promise<void>): void => {
+    void p.catch((err: any) => probot.log.error({ err: err?.message || err }, `reckon: ${name} handler failed`));
+  };
+
+  probot.on(['pull_request.opened', 'pull_request.ready_for_review'], (context) => {
+    bg('pull_request', onPullRequestOpened(context, deps));
   });
 
-  probot.on('pull_request.synchronize', async (context) => {
-    try {
-      await onPullRequestSynchronize(context, deps);
-    } catch (err: any) {
-      context.log.error({ err: err?.message || err }, 'reckon: synchronize handler failed');
-    }
+  probot.on('pull_request.synchronize', (context) => {
+    bg('synchronize', onPullRequestSynchronize(context, deps));
   });
 
-  probot.on('issue_comment.created', async (context) => {
-    try {
-      await onIssueComment(context, deps);
-    } catch (err: any) {
-      context.log.error({ err: err?.message || err }, 'reckon: issue_comment handler failed');
-    }
+  probot.on('issue_comment.created', (context) => {
+    bg('issue_comment', onIssueComment(context, deps));
   });
 }
