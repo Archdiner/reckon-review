@@ -173,9 +173,19 @@ export async function onIssueComment(context: any, deps: Deps): Promise<void> {
   if (!cp) return; // no open gate → nothing to grade
 
   const decisions = (Array.isArray(cp.decisions) ? cp.decisions : []) as Decision[];
+
+  // Grade the reviewer's CUMULATIVE explanation across every round on this gate, not just this
+  // reply. Each gate decomposes into several decisions; a single reply naturally covers a subset,
+  // so grading replies in isolation reports the rest as "missing" every time and the gate never
+  // converges (explain A → "missing B" → explain B → "missing A"). Concatenating all prior
+  // explanations with this one lets coverage accumulate: once a decision is explained in any
+  // round it stays covered, and the rescue prompt only ever names what is genuinely still absent.
+  const prior = await deps.store.listAttemptExplanations(cp.id);
+  const cumulative = [...prior, explanation].join('\n\n');
+
   const g = await gradePlan({
     groundTruth: decisionsToGroundTruth(decisions),
-    explanation,
+    explanation: cumulative,
     rigor: cp.rigor as 'medium' | 'harsh',
     decisions,
     backend: deps.backend,

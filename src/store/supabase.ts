@@ -145,6 +145,19 @@ export class SupabaseStore {
     return count ?? 0;
   }
 
+  /** Every prior explanation on a checkpoint, oldest first. The grader scores the reviewer's
+   *  CUMULATIVE understanding across rounds — otherwise a reply that covers one decision reads
+   *  as "missing" the others and the gate loops forever, never converging. */
+  async listAttemptExplanations(checkpoint_id: string): Promise<string[]> {
+    const { data, error } = await this.db
+      .from('attempts')
+      .select('explanation')
+      .eq('checkpoint_id', checkpoint_id)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(`listAttemptExplanations: ${error.message}`);
+    return (data ?? []).map((r: any) => r.explanation as string);
+  }
+
   /** Count gates (checkpoints) created for an installation's repos since a timestamp. */
   async countInstallGatesSince(installationId: number, sinceIso: string): Promise<number> {
     const { data: repos, error: e1 } = await this.db.from('repos').select('id').eq('installation_id', installationId);
