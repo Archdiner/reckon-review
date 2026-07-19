@@ -67,6 +67,13 @@ async function openGate(context: any, deps: Deps): Promise<void> {
   const repo = repository.name;
   const octokit = context.octokit;
 
+  // Idempotency: GitHub delivers webhooks at-least-once, so `opened` can arrive more
+  // than once for the same PR head (redeliveries, retries). Without this guard the whole
+  // path — decompose + pending check + elicit comment — runs again and double-posts.
+  // If we already opened a gate on THIS exact head, this delivery is a duplicate: bail.
+  const prior = await deps.store.findLatestCheckpoint(repository.id, pr.number);
+  if (prior && prior.head_sha === pr.head.sha) return;
+
   const files = await gh.fetchFiles(octokit, owner, repo, pr.number);
   const diff = await gh.fetchDiff(octokit, owner, repo, pr.number);
   const cls = classify(files, diff);
