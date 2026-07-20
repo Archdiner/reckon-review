@@ -70,17 +70,34 @@ own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wro
 
 ---
 
-## Install it · ~30 seconds
+## Install it · ~1 minute
 
 ```
   1  install    ▸ github.com/apps/reckon-review/installations/new
                   (or: repo → Settings → GitHub Apps → Configure)
 
-  2  require it  ▸ repo → Settings → Branches → Branch protection
-                  ▸ require the  "Reckon comprehension"  status check
+  2  open a PR   ▸ Reckon Review posts its check + elicit comment.
+                  this first run REGISTERS the "Reckon comprehension" check
+                  so GitHub will let you require it in the next step.
 
-  3  done        ▸ open a PR - Reckon Review takes it from there
+  3  require it  ▸ this is the step that makes it actually BLOCK a merge.
+                  Rulesets (recommended):
+                    Settings → Rules → Rulesets → New branch ruleset
+                    → target: default branch → Require status checks to pass
+                    → add  "Reckon comprehension"  → Enforcement: Active
+                  or classic:
+                    Settings → Branches → Add rule → pattern: main
+                    → Require status checks to pass → select "Reckon comprehension"
 ```
+
+> ⚠️ **Until step 3, Reckon is advisory.** A GitHub App can only *report* a status
+> check — GitHub only *enforces* it (blocks the merge) once branch protection requires
+> that check. Skip step 3 and you'll see a red ✗ but the merge button still works.
+> The check only appears in the list *after* it has run once, which is why step 2 comes
+> first.
+
+> 🔜 **Coming soon:** opt-in auto-configuration so Reckon sets the required check for you
+> on install — no manual branch-protection step.
 
 👉 **[Install Reckon Review](https://github.com/apps/reckon-review/installations/new)**
 
@@ -100,6 +117,8 @@ own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wro
 
 ```
   Cost?              free during the beta - we cover the grading.
+  Not blocking?      you skipped step 3 - require the "Reckon comprehension" check in
+                     branch protection. without that, GitHub leaves it advisory.
   Who explains it?   any one reviewer with write access. one good explanation clears it.
   Interfere with CI? no. a separate status check alongside your CI. it runs no code.
   Turn it off?       uninstall the App, or drop the required check.
