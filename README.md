@@ -52,9 +52,9 @@ own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wro
 
 ```
    ┌─────────────┐     ┌──────────────────────┐     ┌───────────────────┐
-   │  PR opened  │────▶│  🧠 explain to merge  │────▶│   an isolated     │
-   │  (any author)│     │  (mechanism, not the │     │   model grades    │
-   └─────────────┘     │   diff) - merge BLOCKED│     │   your reply      │
+   │  PR opened  │────▶│   explain to merge   │────▶│   an isolated     │
+   │ (any author)│        (mechanism, not the │     │   model grades    │
+   └─────────────┘     │ diff) - merge BLOCKED│     │   your reply      │
                        └──────────────────────┘     └─────────┬─────────┘
                                                               │
                         ┌─────────────────────────────────────┴──────┐
@@ -90,7 +90,7 @@ own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wro
                     → Require status checks to pass → select "Reckon comprehension"
 ```
 
-> ⚠️ **Until step 3, Reckon is advisory.** A GitHub App can only *report* a status
+>  **Until step 3, Reckon is advisory.** A GitHub App can only *report* a status
 > check — GitHub only *enforces* it (blocks the merge) once branch protection requires
 > that check. Skip step 3 and you'll see a red ✗ but the merge button still works.
 > The check only appears in the list *after* it has run once, which is why step 2 comes
@@ -99,7 +99,7 @@ own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wro
 > 🔜 **Coming soon:** opt-in auto-configuration so Reckon sets the required check for you
 > on install — no manual branch-protection step.
 
-👉 **[Install Reckon Review](https://github.com/apps/reckon-review/installations/new)**
+**[Install Reckon Review](https://github.com/apps/reckon-review/installations/new)**
 
 ---
 
@@ -130,7 +130,7 @@ we want. Open an issue.
 ---
 
 <details>
-<summary>🛠  Run your own instance (advanced / contributing)</summary>
+<summary>  Run your own instance (advanced / contributing)</summary>
 
 <br>
 
