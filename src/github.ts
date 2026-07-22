@@ -62,3 +62,47 @@ export async function postComment(octokit: any, owner: string, repo: string, iss
   const res = await octokit.issues.createComment({ owner, repo, issue_number, body });
   return res.data.id;
 }
+
+// The name of the branch ruleset Reckon creates and owns. Namespaced + stable so we can
+// find-or-create it idempotently and never touch a consumer's own rulesets.
+export const RECKON_RULESET = 'Reckon comprehension (managed)';
+
+/**
+ * Make Reckon actually BLOCK merges — by default, without the consumer hand-editing branch
+ * protection. We create a branch ruleset on the repo's default branch that REQUIRES the
+ * "Reckon comprehension" check. Two things make this the right mechanism:
+ *   - Rulesets can require a check by CONTEXT NAME even before it has ever reported (classic
+ *     branch protection can't — it only lists checks it has already seen). So gating works on
+ *     the very first PR, no "run once to register" dance.
+ *   - `~DEFAULT_BRANCH` targets whatever the default branch is, so we never fetch or hardcode it.
+ *
+ * Idempotent: if our managed ruleset already exists we leave it alone. Requires the App's
+ * `administration: write` permission; if that isn't granted the create 403s — the caller
+ * swallows it and Reckon simply stays advisory (the pre-auto-config behavior). The off-switch
+ * for a consumer is to delete this ruleset.
+ */
+export async function ensureReckonRuleset(octokit: any, owner: string, repo: string): Promise<'created' | 'exists'> {
+  const existing = await octokit.request('GET /repos/{owner}/{repo}/rulesets', {
+    owner, repo, per_page: 100,
+  });
+  if (Array.isArray(existing.data) && existing.data.some((r: any) => r?.name === RECKON_RULESET)) {
+    return 'exists';
+  }
+  await octokit.request('POST /repos/{owner}/{repo}/rulesets', {
+    owner, repo,
+    name: RECKON_RULESET,
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: ['~DEFAULT_BRANCH'], exclude: [] } },
+    rules: [
+      {
+        type: 'required_status_checks',
+        parameters: {
+          required_status_checks: [{ context: RECKON_CHECK }],
+          strict_required_status_checks_policy: false,
+        },
+      },
+    ],
+  });
+  return 'created';
+}

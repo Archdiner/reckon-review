@@ -10,7 +10,7 @@
     "roundtrip": "tsx src/roundtrip.ts"
   },
   "dependencies": {
-    "@reckon/core": "file:./vendor/reckon-core-0.5.0.tgz",
+    "@reckon/core": "file:vendor/reckon-core-0.5.0.tgz",
     "@supabase/supabase-js": "^2.45.0",
     "openai": "^4.67.0",
     "probot": "^13.4.0"

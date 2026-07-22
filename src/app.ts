@@ -10,7 +10,7 @@ import type { Probot } from 'probot';
 import { loadConfig } from './config.js';
 import { OpenAiBackend } from './grader/openai.js';
 import { SupabaseStore } from './store/supabase.js';
-import { onPullRequestOpened, onPullRequestSynchronize, onIssueComment, type Deps } from './handlers.js';
+import { onInstallation, onPullRequestOpened, onPullRequestSynchronize, onIssueComment, type Deps } from './handlers.js';
 
 export default function app(probot: Probot): void {
   const cfg = loadConfig();
@@ -30,6 +30,12 @@ export default function app(probot: Probot): void {
   const bg = (name: string, p: Promise<void>): void => {
     void p.catch((err: any) => probot.log.error({ err: err?.message || err }, `reckon: ${name} handler failed`));
   };
+
+  // On install (and when repos are added to an existing install), auto-configure the branch
+  // ruleset that makes Reckon block merges BY DEFAULT — no manual branch-protection step.
+  probot.on(['installation.created', 'installation_repositories.added'], (context) => {
+    bg('installation', onInstallation(context, deps));
+  });
 
   probot.on(['pull_request.opened', 'pull_request.ready_for_review'], (context) => {
     bg('pull_request', onPullRequestOpened(context, deps));

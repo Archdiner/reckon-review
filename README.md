@@ -70,34 +70,27 @@ own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wro
 
 ---
 
-## Install it · ~1 minute
+## Install it · ~30 seconds
 
 ```
   1  install    ▸ github.com/apps/reckon-review/installations/new
                   (or: repo → Settings → GitHub Apps → Configure)
 
-  2  open a PR   ▸ Reckon Review posts its check + elicit comment.
-                  this first run REGISTERS the "Reckon comprehension" check
-                  so GitHub will let you require it in the next step.
-
-  3  require it  ▸ this is the step that makes it actually BLOCK a merge.
-                  Rulesets (recommended):
-                    Settings → Rules → Rulesets → New branch ruleset
-                    → target: default branch → Require status checks to pass
-                    → add  "Reckon comprehension"  → Enforcement: Active
-                  or classic:
-                    Settings → Branches → Add rule → pattern: main
-                    → Require status checks to pass → select "Reckon comprehension"
+  2  done       ▸ that's it. On install Reckon creates a branch ruleset on your
+                  default branch that REQUIRES the "Reckon comprehension" check —
+                  so merges are BLOCKED until someone explains the PR. By default.
+                  No branch-protection step to remember.
 ```
 
->  **Until step 3, Reckon is advisory.** A GitHub App can only *report* a status
-> check — GitHub only *enforces* it (blocks the merge) once branch protection requires
-> that check. Skip step 3 and you'll see a red ✗ but the merge button still works.
-> The check only appears in the list *after* it has run once, which is why step 2 comes
-> first.
+>  **Gating is on by default.** Reckon needs the `Administration` permission (granted at
+> install) to set the required-check ruleset for you. Because it uses GitHub *rulesets*, the
+> check gates the very first PR — no "run once to register it" dance. If Reckon can't set the
+> ruleset (permission not granted), it falls back to advisory: you'll see the ✗ but the merge
+> button still works.
 
-> 🔜 **Coming soon:** opt-in auto-configuration so Reckon sets the required check for you
-> on install — no manual branch-protection step.
+> **Want advisory-only instead?** Delete the ruleset Reckon created
+> (Settings → Rules → Rulesets → **Reckon comprehension (managed)** → delete). Reckon keeps
+> posting its check and comments; it just won't block the merge.
 
 **[Install Reckon Review](https://github.com/apps/reckon-review/installations/new)**
 
@@ -117,11 +110,14 @@ own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wro
 
 ```
   Cost?              free during the beta - we cover the grading.
-  Not blocking?      you skipped step 3 - require the "Reckon comprehension" check in
-                     branch protection. without that, GitHub leaves it advisory.
+  Not blocking?      Reckon couldn't set the ruleset - it needs the "Administration"
+                     permission (granted at install) to require its own check. Re-check
+                     the App's permissions, or add the required check manually.
+  Advisory only?     delete the "Reckon comprehension (managed)" ruleset. the check still
+                     posts, it just stops blocking the merge.
   Who explains it?   any one reviewer with write access. one good explanation clears it.
   Interfere with CI? no. a separate status check alongside your CI. it runs no code.
-  Turn it off?       uninstall the App, or drop the required check.
+  Turn it off?       uninstall the App, or delete the managed ruleset.
 ```
 
 **Beta** — if the grader ever seems wrong or the flow feels off, that's exactly the feedback

@@ -3,7 +3,7 @@
  * (records check/comment calls) against the REAL Supabase store + gpt-5.4-mini grader.
  * Proves the orchestration — not just that it type-checks. Uses test ids, cleans up.
  */
-import { onPullRequestOpened, onIssueComment, type Deps } from './handlers.js';
+import { onPullRequestOpened, onIssueComment, onInstallation, type Deps } from './handlers.js';
 import { loadConfig } from './config.js';
 import { OpenAiBackend } from './grader/openai.js';
 import { SupabaseStore } from './store/supabase.js';
@@ -45,6 +45,26 @@ function fakeOctokit(files: string[]) {
   return { octokit, calls };
 }
 
+// A fake octokit for the install path: an in-memory rulesets table its `request` honors, so
+// GET reflects prior POSTs — enough to prove find-or-create idempotency without a network.
+function fakeInstallOctokit() {
+  const rulesets: any[] = [];
+  const calls = { gets: 0, posts: 0 };
+  const octokit = {
+    request: async (route: string, params: any) => {
+      if (route.startsWith('GET')) { calls.gets++; return { data: rulesets }; }
+      if (route.startsWith('POST')) { calls.posts++; rulesets.push({ id: rulesets.length + 1, name: params.name }); return { data: rulesets.at(-1) }; }
+      throw new Error(`unexpected route ${route}`);
+    },
+  };
+  return { octokit, calls, rulesets };
+}
+const installCtx = (octokit: any, repos: any[]) => ({
+  octokit,
+  log: { warn: () => {} },
+  payload: { installation: { id: INST, account: { login: 'reckon-test' } }, repositories: repos },
+});
+
 const prCtx = (octokit: any) => ({ octokit, payload: {
   pull_request: { number: PR, node_id: 'PR_x', head: { sha: 'sha1' }, draft: false },
   repository: { id: REPO, name: 'roundtrip', full_name: 'reckon-test/roundtrip', default_branch: 'main', owner: { login: 'reckon-test', type: 'User' } },
@@ -66,6 +86,17 @@ async function main() {
   await store.deleteInstallation(INST).catch(() => {});
   console.log(`grader model: ${cfg.graderModel}\n`);
 
+  // 0. Install → auto-configure the merge-gating ruleset (no network; fake octokit).
+  const i1 = fakeInstallOctokit();
+  await onInstallation(installCtx(i1.octokit, [{ full_name: 'reckon-test/roundtrip', name: 'roundtrip' }]), deps);
+  step(i1.calls.posts === 1 && i1.rulesets.length === 1, 'install → managed ruleset created (gates by default)');
+  await onInstallation(installCtx(i1.octokit, [{ full_name: 'reckon-test/roundtrip', name: 'roundtrip' }]), deps);
+  step(i1.calls.posts === 1, 'install redelivery → idempotent (no duplicate ruleset)');
+  const iErr = { request: async (r: string) => { if (r.startsWith('GET')) return { data: [] }; throw new Error('403'); } };
+  let threw = false;
+  await onInstallation(installCtx(iErr, [{ full_name: 'reckon-test/roundtrip', name: 'roundtrip' }]), deps).catch(() => { threw = true; });
+  step(!threw, 'install with no admin permission → degrades to advisory (does not throw)');
+
   // 1. PR opened
   const o1 = fakeOctokit(['src/webhook.ts']);
   await onPullRequestOpened(prCtx(o1.octokit), deps);
@@ -80,7 +111,9 @@ async function main() {
   const stillPending = await store.findPendingCheckpoint(REPO, PR);
   step(!!stillPending, 'SLOP → checkpoint still pending (merge stays blocked)');
   step(!o2.calls.checksUpdated.some((c) => c.conclusion === 'success'), 'SLOP → check NOT flipped to success');
-  step(o2.calls.comments.some((b) => /one more pass/i.test(b)), 'SLOP → rescue reply posted');
+  // Match the rescue's STABLE closing line, not the rotating header (which is seeded off the
+  // hole text and varies with the decomposition — asserting a specific header is brittle).
+  step(o2.calls.comments.some((b) => /reply again in this thread/i.test(b)), 'SLOP → rescue reply posted');
 
   // 3. GOOD comment → pass → flip check + mark passed
   const o3 = fakeOctokit([]);

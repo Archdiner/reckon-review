@@ -165,6 +165,8 @@ Notes:
   Pull requests    Read & write     (read diff metadata; the API surface)
   Issues           Read & write     (PR comments ARE issue comments)
   Checks           Read & write     (create/update the gating check run)
+  Administration   Read & write     (create the branch ruleset that REQUIRES the check —
+                                     this is what makes gating on-by-default)
   Contents         Read             (fetch diff + .reckon.yml)
   Metadata         Read             (mandatory)
 ```
@@ -187,11 +189,24 @@ Notes:
   4. inbound webhooks verified via HMAC-SHA256 against WEBHOOK_SECRET
 ```
 
-**Branch protection (the consumer sets this — this is what actually blocks merge):**
+**Branch protection (Reckon sets this by default — this is what actually blocks merge):**
 
 ```
-  Settings → Branches → require status check: "Reckon — comprehension"
-  + require ≥1 approving review  (native GitHub — the human-judgment half)
+  on installation.created / installation_repositories.added →
+    onInstallation() → ensureReckonRuleset() creates a branch ruleset:
+      target      ~DEFAULT_BRANCH
+      enforcement active
+      rule        required_status_checks → context "Reckon comprehension"
+
+  Why rulesets, not classic branch protection: a ruleset can require a check by
+  CONTEXT NAME before that check has ever reported, so the FIRST PR is gated. Classic
+  protection only lets you pick from checks it has already seen (the old chicken-egg).
+
+  Idempotent + best-effort per repo. No `administration: write` (older install, not
+  re-consented) → the create 403s, is logged, and Reckon degrades to advisory.
+  Off-switch for a consumer: delete the "Reckon comprehension (managed)" ruleset.
+
+  Optionally pair with native GitHub "require ≥1 approving review" — the human-judgment half.
 ```
 
 Reckon's check = "someone explained and passed." GitHub's required-approval = "someone

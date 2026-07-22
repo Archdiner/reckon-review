@@ -100,6 +100,34 @@ async function openGate(context: any, deps: Deps): Promise<void> {
   await gh.postComment(octokit, owner, repo, pr.number, elicitBody(decisions));
 }
 
+/**
+ * App installed, or repos added to an existing install → make Reckon gate BY DEFAULT.
+ * For each repo we ensure the managed branch ruleset that requires the "Reckon comprehension"
+ * check, so a merge is blocked without the consumer touching branch protection.
+ *
+ * Best-effort and independent per repo: a repo where we lack `administration: write` (e.g. an
+ * older install that hasn't re-consented to the new permission) just fails its own
+ * ensureReckonRuleset — logged, skipped — and Reckon stays advisory there. One repo's failure
+ * never blocks the rest. Idempotent: safe on redelivered installation webhooks.
+ */
+export async function onInstallation(context: any, deps: Deps): Promise<void> {
+  const octokit = context.octokit;
+  const account = context.payload.installation?.account?.login;
+  // installation.created carries `repositories`; installation_repositories.added carries
+  // `repositories_added`. Either way each entry is { full_name, name, ... }.
+  const repos: any[] = context.payload.repositories || context.payload.repositories_added || [];
+  for (const r of repos) {
+    const [owner, repo] = String(r.full_name || `${account}/${r.name}`).split('/');
+    if (!owner || !repo) continue;
+    try {
+      await gh.ensureReckonRuleset(octokit, owner, repo);
+    } catch (err: any) {
+      // 403 = admin permission not granted (yet); anything else = transient. Degrade to advisory.
+      context.log?.warn?.({ err: err?.message || err, repo: `${owner}/${repo}` }, 'reckon: could not auto-configure gating ruleset');
+    }
+  }
+}
+
 export async function onPullRequestOpened(context: any, deps: Deps): Promise<void> {
   if (context.payload.pull_request.draft) return; // wait for ready_for_review
   await upsertParents(context, deps);
