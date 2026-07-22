@@ -11,6 +11,7 @@ import type { LlmBackend } from '@reckon/core';
 import { SupabaseStore } from './store/supabase.js';
 import * as gh from './github.js';
 import { elicitBody, rescueBody, passBody, ungradedBody, cappedBody } from './format.js';
+import { closeout } from './closeout.js';
 import { hash, classify, decisionsToGroundTruth } from './util.js';
 
 export interface Deps {
@@ -215,11 +216,17 @@ export async function onIssueComment(context: any, deps: Deps): Promise<void> {
     if (cp.check_run_id) {
       await gh.setCheckSuccess(octokit, owner, repo, cp.check_run_id, `Explained by @${payload.comment.user.login}.`);
     }
+    // The DEPOSIT: a best-effort rich close over the cumulative explanation. Sequenced
+    // AFTER the check flips green and cannot affect the merge — a null (grader hiccup)
+    // just degrades to the plain pass message. Persisted so a user's Reckon record can
+    // later show which topics they demonstrated they understand well.
+    const close = await closeout(decisions, cumulative, deps.backend);
     await deps.store.markCheckpointPassed(cp.id, {
       passed_by: payload.comment.user.login,
       passed_by_id: payload.comment.user.id,
+      closeout: close,
     });
-    await gh.postComment(octokit, owner, repo, pr_number, passBody(payload.comment.user.login));
+    await gh.postComment(octokit, owner, repo, pr_number, passBody(payload.comment.user.login, close));
   } else {
     // Stay blocked (check remains in_progress); offer the single hole.
     await gh.postComment(octokit, owner, repo, pr_number, rescueBody(g.hole));

@@ -20,6 +20,7 @@ export interface CheckpointRow {
   passed_by: string | null;
   passed_by_id: number | null;
   passed_at: string | null;
+  closeout: unknown | null; // the rich deposit persisted on pass (null if best-effort failed)
   created_at: string;
   updated_at: string;
 }
@@ -97,14 +98,28 @@ export class SupabaseStore {
     if (error) throw new Error(`recordAttempt: ${error.message}`);
   }
 
-  /** Any one reviewer's pass satisfies the gate (the decided v1 rule). */
-  async markCheckpointPassed(id: string, by: { passed_by: string; passed_by_id: number }): Promise<void> {
+  /** Any one reviewer's pass satisfies the gate (the decided v1 rule). The closeout (the
+   *  rich deposit) is persisted alongside so a user's Reckon record can show what they
+   *  demonstrated they understand — null when the best-effort close failed. */
+  async markCheckpointPassed(
+    id: string,
+    by: { passed_by: string; passed_by_id: number; closeout?: unknown }
+  ): Promise<void> {
     const now = new Date().toISOString();
+    // Critical write: flip the gate to passed + record who cleared it. Must succeed.
     const { error } = await this.db
       .from('checkpoints')
       .update({ status: 'passed', passed_by: by.passed_by, passed_by_id: by.passed_by_id, passed_at: now, updated_at: now })
       .eq('id', id);
     if (error) throw new Error(`markCheckpointPassed: ${error.message}`);
+
+    // Best-effort: persist the rich close. Tolerates the `closeout` column being absent (a
+    // deploy that lands BEFORE the migration still passes cleanly — the deposit MESSAGE is
+    // computed in-handler and unaffected; only persistence waits for the column).
+    if (by.closeout !== undefined) {
+      const { error: e2 } = await this.db.from('checkpoints').update({ closeout: by.closeout }).eq('id', id);
+      if (e2) console.warn(`markCheckpointPassed: closeout not persisted (${e2.message}) — run the migration`);
+    }
   }
 
   /** The most recent checkpoint for a PR, any status — used on synchronize (new push). */
