@@ -1,7 +1,15 @@
 import type { Decision } from '@reckon/core';
-import type { Closeout, TopicVerdict } from './closeout.js';
+import type { Closeout } from './closeout.js';
 
 export const RECKON_CHECK = 'Reckon comprehension';
+
+// Reckon never speaks in em dashes. Our own copy is written without them, but the grader-
+// and closeout-generated fields (hole, one_line, strongest, growth_edge) can come back with
+// them, so we strip them at the render boundary: "A — B" becomes "A, B", the reflowed comma
+// reading naturally in almost every case. Also collapses the en dash for the same reason.
+function noDash(s: string): string {
+  return s.replace(/\s*[—–]\s*/g, ', ').replace(/ ,/g, ',').trim();
+}
 
 // Deterministic-but-varied phrasing. A gate that opens with the identical script every time
 // reads as robotic; rotating the wording keeps it human. Seeded off the PR's own topics so the
@@ -14,17 +22,17 @@ function pick<T>(arr: T[], seed: string): T {
 }
 
 const ELICIT_INTROS = [
-  'Before this merges, walk me through it in your own words — the how and the why, not a summary of the diff.',
-  'Quick comprehension check before merge: explain the reasoning here like you would to a teammate, not by restating what changed.',
-  "Before this goes in, talk me through what it's really doing and why it holds — your words, not a recap of the lines.",
-  'One thing before merge — help me understand the mechanism here, and what would break if it were done differently.',
-  'Before merging, explain the thinking behind this: why it works, and the failure it steers around.',
+  'Before this merges, walk me through it in your own words. How it works and why, not a recap of the diff.',
+  'Quick gut check before this goes in. Explain the reasoning here the way you would to a teammate, not by restating what changed.',
+  "Before it lands, tell me what this is actually doing and why it holds. Your words, not the lines.",
+  'One thing before merge. Help me see the mechanism here, and what would break if you did it another way.',
+  'Before merging, talk me through the thinking. Why it works, and the failure it quietly steers around.',
 ];
-const ELICIT_LEADINS = ['Speak to each of these', 'Worth covering', 'Make sure you touch on', 'A few things to hit'];
+const ELICIT_LEADINS = ['Speak to each of these', 'Worth touching on', 'Make sure you hit', 'A few things to cover'];
 const ELICIT_CLOSERS = [
-  'Reply in this thread — an isolated grader reads it, and the merge stays blocked until it passes.',
-  'Drop your explanation as a reply here. A separate grader checks it; the merge unblocks once it lands.',
-  "Answer in this thread. An independent grader scores it, and the gate opens once the mechanism's there.",
+  'Reply right here in the thread. A separate grader reads it, and the merge stays put until it passes.',
+  'Drop your explanation as a reply. Another grader checks it, and the merge opens once it lands.',
+  'Answer in this thread. An independent grader scores it, and the gate opens once the mechanism is there.',
 ];
 
 function humanize(concept: string): string {
@@ -36,7 +44,7 @@ function humanize(concept: string): string {
 // a bare summary would). Prefer it; fall back to a humanized slug phrase if it's ever missing.
 function askFor(d: Decision): string {
   const q = (d.question || '').trim();
-  return q || `the ${humanize(d.concept)} — how it works and why`;
+  return q || `the ${humanize(d.concept)}: how it works and why`;
 }
 
 /**
@@ -48,47 +56,39 @@ export function elicitBody(decisions: Decision[]): string {
   const seed = decisions.map((d) => d.concept).join('|') || 'whole';
   const out = ['### 🌊 Reckon: explain to merge', '', pick(ELICIT_INTROS, seed)];
   if (decisions.length) {
-    out.push('', `${pick(ELICIT_LEADINS, seed + '^')}:`, ...decisions.map((d) => `- ${askFor(d)}`));
+    out.push('', `${pick(ELICIT_LEADINS, seed + '^')}:`, ...decisions.map((d) => `- ${noDash(askFor(d))}`));
   }
   out.push('', pick(ELICIT_CLOSERS, seed + '~'));
   return out.join('\n');
 }
 
-const RESCUE_HEADERS = ['### 🌊 Close — one more pass', '### 🌊 Almost — take another swing', '### 🌊 Nearly there'];
+const RESCUE_HEADERS = ['### 🌊 Close. One more pass.', '### 🌊 Almost there. Take another swing.', '### 🌊 So close.'];
 
 /** Rescue reply on a failed grade: the single hole the grader surfaced. */
 export function rescueBody(hole: string): string {
-  return [pick(RESCUE_HEADERS, hole), '', hole, '', 'Reply again in this thread.'].join('\n');
+  return [pick(RESCUE_HEADERS, hole), '', noDash(hole), '', 'Give it one more go right here.'].join('\n');
 }
 
-const VERDICT_MARK: Record<TopicVerdict, string> = {
-  strong: '🟢 **strong**',
-  solid: '🟡 solid',
-  thin: '🟠 thin',
-};
-
 /**
- * The pass message. With a closeout it becomes the DEPOSIT — a per-topic read of what the
- * reviewer showed, their strongest point, and the one growth edge — so the highest-value
- * moment gives something back instead of a one-liner. Without one (closeout best-effort
- * returned null), it degrades to the simple confirmation. The merge is unblocked either way.
+ * The pass message. Kept deliberately short: a passing explanation is a good moment, and the
+ * surest way to make it read like AI filler is to pad it with per-topic rows and badges. So
+ * we keep only the two lines worth reading, the one thing they nailed (✧) and the one place to
+ * push next (▸), under a warm line naming what they now understand. Without a closeout it
+ * degrades to a single human sentence. Merge is unblocked either way; all dynamic text is
+ * stripped of em dashes at the boundary.
  */
 export function passBody(login: string, close?: Closeout | null): string {
   if (!close) {
-    return `### ✓ Comprehension passed\n\n@${login} explained the mechanism. Merge unblocked.`;
+    return `### ✧ You explained it. Merge unblocked.\n\nNice work, @${login}. That is the real mechanism, not just a description of it.`;
   }
-  const rows = close.topics.map((t) => `- ${VERDICT_MARK[t.verdict]} · **${t.concept}** — ${t.note}`);
   const lines = [
-    `### ✓ Comprehension passed — @${login}`,
+    '### ✧ You explained it. Merge unblocked.',
     '',
-    close.one_line,
-    '',
-    '**What you showed**',
-    ...rows,
+    close.one_line ? `Nice work, @${login}. ${noDash(close.one_line)}` : `Nice work, @${login}.`,
   ];
-  if (close.strongest) lines.push('', `**Strongest** — ${close.strongest}`);
-  if (close.growth_edge) lines.push('', `**Go deeper** — ${close.growth_edge}`);
-  lines.push('', 'Merge unblocked, and this is now on your Reckon record.');
+  if (close.strongest) lines.push('', `✧ **Nailed it:** ${noDash(close.strongest)}`);
+  if (close.growth_edge) lines.push('', `▸ **Push next:** ${noDash(close.growth_edge)}`);
+  lines.push('', 'Saved to your Reckon record.');
   return lines.join('\n');
 }
 
@@ -98,9 +98,9 @@ export function cappedBody(scope: 'install' | 'global'): string {
     ? "this account has hit today's Reckon Review beta limit"
     : "Reckon Review has hit today's global beta limit";
   return [
-    '### ⏳ Reckon Review — beta limit reached',
+    '### ⏳ Reckon Review, beta limit reached',
     '',
-    `${which}, so this PR was not gated. The check is neutral (not blocking) — merge as normal.`,
+    `${which}, so this PR was not gated. The check is neutral, not blocking, so merge as normal.`,
     'Try again tomorrow.',
   ].join('\n');
 }
@@ -110,7 +110,7 @@ export function ungradedBody(note: string): string {
   return [
     '### ⚠ Reckon grader unavailable',
     '',
-    `Could not grade this (${note}). The check is neutral, not passed.`,
-    'A human should confirm understanding before merging.',
+    `Could not grade this (${noDash(note)}). The check is neutral, not passed.`,
+    'Someone should confirm they understand this before it merges.',
   ].join('\n');
 }

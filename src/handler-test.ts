@@ -113,7 +113,7 @@ async function main() {
   step(!o2.calls.checksUpdated.some((c) => c.conclusion === 'success'), 'SLOP → check NOT flipped to success');
   // Match the rescue's STABLE closing line, not the rotating header (which is seeded off the
   // hole text and varies with the decomposition — asserting a specific header is brittle).
-  step(o2.calls.comments.some((b) => /reply again in this thread/i.test(b)), 'SLOP → rescue reply posted');
+  step(o2.calls.comments.some((b) => /give it one more go right here/i.test(b)), 'SLOP → rescue reply posted');
 
   // 3. GOOD comment → pass → flip check + mark passed
   const o3 = fakeOctokit([]);
@@ -121,7 +121,7 @@ async function main() {
   step(o3.calls.checksUpdated.some((c) => c.conclusion === 'success'), 'GOOD → check flipped to success');
   const after = await store.getCheckpoint(cp!.id);
   step(after?.status === 'passed' && after?.passed_by === 'alice', 'GOOD → checkpoint marked passed by alice');
-  step(o3.calls.comments.some((b) => /comprehension passed/i.test(b)), 'GOOD → pass comment posted');
+  step(o3.calls.comments.some((b) => /you explained it\. merge unblocked/i.test(b)), 'GOOD → pass comment posted');
 
   await store.deleteInstallation(INST); // cascade cleanup
   console.log(`\n==> HANDLERS: ${failed ? 'FAIL' : 'PASS — full PR gate flow works (pending → rescue → pass)'}`);
