@@ -44,7 +44,7 @@ own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wro
                      the other checks the person shipping it
 ```
 
-> 🦎 **Hosted for you.** Nothing to run, no server, no keys to manage. Free during the beta.
+> Free during the beta, use it!
 
 ---
 
