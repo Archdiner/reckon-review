@@ -1,6 +1,10 @@
 # Codebase Graph — Research & Build Plan
 
-**Status:** research complete, build not started · **Last updated:** 2026-07-25
+**Status:** SHIPPED (PR-gate level) · **Last updated:** 2026-07-25
+> Built and live: the ephemeral per-PR graph (`src/graph/*`) feeds decompose, and criticality
+> drives policy (peripheral-only auto-pass, hub → harsh rigor). TS/JS only for now (TS-compiler
+> backend; tree-sitter/SCIP are the later multi-language backends). The MCP-level deep graph and
+> the SCIP "buy" remain future per the roadmap below.
 **Context:** giving Reckon a structural understanding of the codebase so it can (1) gate by
 *criticality* not size (lever ②), and (2) ask "how does this change interact with the rest of
 the system?" This is the feature that turns Reckon from a seatbelt into something deep.
