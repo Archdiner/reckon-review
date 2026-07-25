@@ -279,6 +279,34 @@ export async function onIssueComment(context: any, deps: Deps): Promise<void> {
       passed_by_id: payload.comment.user.id,
       closeout: close,
     });
+
+    // THE DURABLE RECORD. Promote the passer into the cross-install users table and append one
+    // demonstration row per topic they showed understanding of. This lives in tables keyed by
+    // github_id that OUTLIVE uninstall (unlike the checkpoint/attempt data), which is the whole
+    // point of a personal record — and is disclosed as persistent. Best-effort and sequenced
+    // after the merge is already unblocked: a missing table (migration not yet applied) or any
+    // write error is logged and swallowed, never affecting the gate. Prefer the closeout's
+    // per-topic verdicts; fall back to the raw decisions if the best-effort close returned null.
+    try {
+      const gid = payload.comment.user.id;
+      const glogin = payload.comment.user.login;
+      await deps.store.upsertUser({ github_id: gid, github_login: glogin });
+      const summaryOf = new Map(decisions.map((d) => [d.concept, d.summary]));
+      const rows = close && close.topics.length
+        ? close.topics.map((t) => ({
+            github_id: gid, github_login: glogin, concept: t.concept,
+            summary: summaryOf.get(t.concept), verdict: t.verdict, note: t.note,
+            repo_full_name: `${owner}/${repo}`, pr_number,
+          }))
+        : decisions.map((d) => ({
+            github_id: gid, github_login: glogin, concept: d.concept,
+            summary: d.summary, verdict: null, repo_full_name: `${owner}/${repo}`, pr_number,
+          }));
+      await deps.store.recordDemonstrations(rows);
+    } catch (err: any) {
+      context.log?.warn?.({ err: err?.message || err, pr: pr_number }, 'reckon: durable record write failed (gate unaffected)');
+    }
+
     await gh.postComment(octokit, owner, repo, pr_number, passBody(payload.comment.user.login, close));
   } else {
     // Stay blocked (check remains in_progress); offer the single hole.

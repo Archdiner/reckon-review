@@ -109,3 +109,29 @@ create table if not exists mcp_events (
 );
 create index if not exists mcp_events_github_idx on mcp_events(github_id);
 create index if not exists mcp_events_subsystem_idx on mcp_events(subsystem);
+
+-- ── THE DURABLE RECORD (merge-time) ──────────────────────────────────────────────────────
+-- One row per topic a person demonstrated understanding of on a PASSED gate. This is the
+-- merge-time twin of mcp_events, and the raw material for the future skill graph (cluster the
+-- `concept` slugs; each cluster's leaves are these rows, which you can click through to the
+-- exact demonstration).
+--
+-- DELIBERATELY NOT FK'd to installations/repos: this is the PERSON's record, so it must OUTLIVE
+-- any single repo or the app being uninstalled (the gate's per-repo data in checkpoints/attempts
+-- cascade-purges on uninstall; this does not). Provenance (repo_full_name, pr_number) is a
+-- DENORMALIZED text copy for exactly that reason — it stays intact after the source repo row is
+-- gone. Deletion of this record is user-initiated (store.deleteUserRecord), not tied to uninstall.
+create table if not exists demonstrations (
+  id              uuid primary key default gen_random_uuid(),
+  github_id       bigint not null,            -- durable owner + join key (users.github_id)
+  github_login    text,
+  concept         text not null,              -- the raw slug (skill-graph leaf; cluster later)
+  summary         text,                       -- what the topic was
+  verdict         text,                       -- strong | solid | thin | null (from the closeout)
+  note            text,                       -- the grader's per-topic note, if any
+  repo_full_name  text,                       -- denormalized provenance (survives repo purge)
+  pr_number       integer,
+  demonstrated_at timestamptz not null default now()
+);
+create index if not exists demonstrations_github_idx on demonstrations(github_id);
+create index if not exists demonstrations_concept_idx on demonstrations(concept);

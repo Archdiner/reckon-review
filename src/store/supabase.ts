@@ -50,6 +50,17 @@ export interface NewAttempt {
   hole?: string;
 }
 
+export interface NewDemonstration {
+  github_id: number;
+  github_login?: string;
+  concept: string;
+  summary?: string;
+  verdict?: string | null; // strong | solid | thin | null
+  note?: string;
+  repo_full_name?: string;
+  pr_number?: number;
+}
+
 export class SupabaseStore {
   private db: SupabaseClient;
   constructor(url: string, secretKey: string) {
@@ -209,5 +220,36 @@ export class SupabaseStore {
   async deleteRepo(id: number): Promise<void> {
     const { error } = await this.db.from('repos').delete().eq('id', id);
     if (error) throw new Error(`deleteRepo: ${error.message}`);
+  }
+
+  // ── The durable, cross-install personal record ─────────────────────────────────────────
+  // These write to tables keyed by github_id that are NOT cascade-purged on uninstall (unlike
+  // checkpoints/attempts). They back the persistent skill graph, and are disclosed as such.
+
+  /** Promote a GitHub identity into the durable users table (the cross-surface anchor). Upsert
+   *  so it is idempotent across every PR a person passes; refreshes last_seen. */
+  async upsertUser(u: { github_id: number; github_login?: string; email?: string }): Promise<void> {
+    const now = new Date().toISOString();
+    const { error } = await this.db
+      .from('users')
+      .upsert({ github_id: u.github_id, github_login: u.github_login, email: u.email, last_seen: now }, { onConflict: 'github_id' });
+    if (error) throw new Error(`upsertUser: ${error.message}`);
+  }
+
+  /** Append demonstrated-understanding rows (one per topic on a passed gate). */
+  async recordDemonstrations(rows: NewDemonstration[]): Promise<void> {
+    if (rows.length === 0) return;
+    const { error } = await this.db.from('demonstrations').insert(rows);
+    if (error) throw new Error(`recordDemonstrations: ${error.message}`);
+  }
+
+  /** Delete a person's durable record on request (the honest counterpart to persistence — the
+   *  record survives uninstall, so deletion has to be explicit). Removes their demonstrations
+   *  and the users anchor; leaves any per-repo gate data to the install-scoped cascade. */
+  async deleteUserRecord(github_id: number): Promise<void> {
+    const d = await this.db.from('demonstrations').delete().eq('github_id', github_id);
+    if (d.error) throw new Error(`deleteUserRecord(demonstrations): ${d.error.message}`);
+    const u = await this.db.from('users').delete().eq('github_id', github_id);
+    if (u.error) throw new Error(`deleteUserRecord(users): ${u.error.message}`);
   }
 }
