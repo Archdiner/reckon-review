@@ -3,7 +3,7 @@
  * (records check/comment calls) against the REAL Supabase store + gpt-5.4-mini grader.
  * Proves the orchestration — not just that it type-checks. Uses test ids, cleans up.
  */
-import { onPullRequestOpened, onIssueComment, onInstallation, type Deps } from './handlers.js';
+import { onPullRequestOpened, onIssueComment, onInstallation, onInstallationDeleted, type Deps } from './handlers.js';
 import { loadConfig } from './config.js';
 import { OpenAiBackend } from './grader/openai.js';
 import { SupabaseStore } from './store/supabase.js';
@@ -123,8 +123,13 @@ async function main() {
   step(after?.status === 'passed' && after?.passed_by === 'alice', 'GOOD → checkpoint marked passed by alice');
   step(o3.calls.comments.some((b) => /you explained it\. merge unblocked/i.test(b)), 'GOOD → pass comment posted');
 
-  await store.deleteInstallation(INST); // cascade cleanup
-  console.log(`\n==> HANDLERS: ${failed ? 'FAIL' : 'PASS — full PR gate flow works (pending → rescue → pass)'}`);
+  // 4. Uninstall → purge. Drives the real handler (not a raw store call) so the retention
+  //    guarantee is tested end to end, and doubles as this test's cleanup.
+  await onInstallationDeleted({ octokit: null, payload: { installation: { id: INST } } }, deps);
+  const purged = await store.findLatestCheckpoint(REPO, PR);
+  step(purged === null, 'uninstall → all gate data purged (checkpoint + attempts gone)');
+
+  console.log(`\n==> HANDLERS: ${failed ? 'FAIL' : 'PASS — full PR gate flow works (pending → rescue → pass → purge)'}`);
   process.exit(failed ? 1 : 0);
 }
 main().catch((e) => { console.error('handler-test error:', e?.message || e); process.exit(1); });

@@ -203,4 +203,11 @@ export class SupabaseStore {
     const { error } = await this.db.from('installations').delete().eq('id', id);
     if (error) throw new Error(`deleteInstallation: ${error.message}`);
   }
+
+  /** Deleting a repo cascades to its checkpoints → attempts. Used when a single repo is
+   *  removed from an install (the install itself stays). */
+  async deleteRepo(id: number): Promise<void> {
+    const { error } = await this.db.from('repos').delete().eq('id', id);
+    if (error) throw new Error(`deleteRepo: ${error.message}`);
+  }
 }

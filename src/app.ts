@@ -10,7 +10,7 @@ import type { Probot } from 'probot';
 import { loadConfig } from './config.js';
 import { OpenAiBackend } from './grader/openai.js';
 import { SupabaseStore } from './store/supabase.js';
-import { onInstallation, onPullRequestOpened, onPullRequestSynchronize, onIssueComment, type Deps } from './handlers.js';
+import { onInstallation, onInstallationDeleted, onInstallationReposRemoved, onPullRequestOpened, onPullRequestSynchronize, onIssueComment, type Deps } from './handlers.js';
 
 export default function app(probot: Probot): void {
   const cfg = loadConfig();
@@ -35,6 +35,16 @@ export default function app(probot: Probot): void {
   // ruleset that makes Reckon block merges BY DEFAULT — no manual branch-protection step.
   probot.on(['installation.created', 'installation_repositories.added'], (context) => {
     bg('installation', onInstallation(context, deps));
+  });
+
+  // Uninstall → purge the account's data (cascade). The retention guarantee.
+  probot.on('installation.deleted', (context) => {
+    bg('installation_deleted', onInstallationDeleted(context, deps));
+  });
+
+  // A repo removed from an install → purge just that repo's data (cascade).
+  probot.on('installation_repositories.removed', (context) => {
+    bg('repos_removed', onInstallationReposRemoved(context, deps));
   });
 
   probot.on(['pull_request.opened', 'pull_request.ready_for_review'], (context) => {

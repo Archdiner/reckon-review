@@ -128,6 +128,31 @@ export async function onInstallation(context: any, deps: Deps): Promise<void> {
   }
 }
 
+/**
+ * App uninstalled from an account → delete everything we stored for it. deleteInstallation
+ * removes the installations row and the FK cascade takes repos → checkpoints → attempts with it,
+ * so no diff-derived data (topics, explanations, grades, who passed) outlives the uninstall.
+ * This is the retention guarantee behind the data story: removing the app purges the account's
+ * gate data, with no expiry job to wait on.
+ */
+export async function onInstallationDeleted(context: any, deps: Deps): Promise<void> {
+  const id = context.payload.installation?.id;
+  if (!id) return;
+  await deps.store.deleteInstallation(id);
+}
+
+/**
+ * Repos removed from an install (the install itself stays) → delete just those repos. Same
+ * cascade (repo → checkpoints → attempts), so revoking Reckon on one repo purges that repo's
+ * data immediately, not only on a full uninstall.
+ */
+export async function onInstallationReposRemoved(context: any, deps: Deps): Promise<void> {
+  const removed: any[] = context.payload.repositories_removed || [];
+  for (const r of removed) {
+    if (r?.id) await deps.store.deleteRepo(r.id);
+  }
+}
+
 export async function onPullRequestOpened(context: any, deps: Deps): Promise<void> {
   if (context.payload.pull_request.draft) return; // wait for ready_for_review
   await upsertParents(context, deps);
