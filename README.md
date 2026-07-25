@@ -99,10 +99,16 @@ own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wro
 ## What it can (and can't) see
 
 ```
-   reads   ▸ the PR's diff + the explanation comments people write
+   reads   ▸ the PR's diff + the explanation comments + a snapshot of the repo's
+             source at the PR head, IN MEMORY, to map how the change fits the codebase
    writes  ▸ a status check + comments on the PR
-   never   ▸ reads code outside the PR · stores your source · touches anything else
+   never   ▸ stores your source · persists the map · touches anything outside the repo
 ```
+
+> Reckon reads the repository's source at the PR's head commit to build a throwaway map of
+> how the change connects to the rest of the code (what references it, how load-bearing it is).
+> This map lives only for the few seconds it takes to generate the questions, then is discarded.
+> Nothing is stored, and the map is never persisted.
 
 ---
 

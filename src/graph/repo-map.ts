@@ -59,11 +59,16 @@ export function buildGraph(files: RepoFile[], extractors: SymbolExtractor[] = DE
     is.add(sym);
   };
 
+  // A name defined in many files (check, run, setup, handle, get…) is a generic collision, not a
+  // real reference target — linking every caller to every definer floods the graph with false
+  // hubs (test files full of common helper names dominate fan-in). Drop names above this cap:
+  // they carry no resolution signal. Precise import-resolution is the later (SCIP-backed) upgrade.
+  const AMBIGUITY_CAP = 3;
   for (const [file, refs] of refsByFile) {
     for (const r of refs) {
       const sites = defSites.get(r.name);
-      if (!sites) continue;
-      for (const g of sites) addEdge(file, g, r.name); // over-approximate on ambiguous names
+      if (!sites || sites.length > AMBIGUITY_CAP) continue;
+      for (const g of sites) addEdge(file, g, r.name);
     }
   }
 

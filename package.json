@@ -13,10 +13,12 @@
     "@reckon/core": "file:vendor/reckon-core-0.5.0.tgz",
     "@supabase/supabase-js": "^2.45.0",
     "openai": "^4.67.0",
-    "probot": "^13.4.0"
+    "probot": "^13.4.0",
+    "tar-stream": "^3.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/tar-stream": "^3.1.4",
     "smee-client": "^5.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"

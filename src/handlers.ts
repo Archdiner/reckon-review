@@ -14,6 +14,7 @@ import { elicitBody, rescueBody, passBody, ungradedBody, cappedBody } from './fo
 import { closeout } from './closeout.js';
 import { hash, classify, decisionsToGroundTruth } from './util.js';
 import { diffDigest } from './diff-digest.js';
+import { structuralContext } from './graph/context.js';
 
 export interface Deps {
   store: SupabaseStore;
@@ -93,7 +94,13 @@ async function openGate(context: any, deps: Deps): Promise<void> {
 
   // Digest large diffs so decompose sees the WHOLE PR, not just its first 8000 chars (classify
   // above still runs on the raw diff for accurate line counts). Small diffs pass through as-is.
-  const d = await decompose(diffDigest(diff), deps.backend);
+  // Fold the codebase graph into decompose's input: the diff (digested) PLUS a compact map of how
+  // the changed files sit in the repo (criticality + who references them). Best-effort — a null
+  // structural context just falls back to diff-only decomposition. This is what makes the gate
+  // criticality- and interaction-aware ("this touches a hub referenced by N files").
+  const sc = await structuralContext(octokit, owner, repo, pr.head.sha, files);
+  const plan = sc.text ? `${diffDigest(diff)}\n\n${sc.text}` : diffDigest(diff);
+  const d = await decompose(plan, deps.backend);
   const decisions: Decision[] = d.ok ? d.decisions : [];
   const check_run_id = await gh.createPendingCheck(octokit, owner, repo, pr.head.sha);
   await deps.store.createCheckpoint({
@@ -194,7 +201,13 @@ export async function onPullRequestSynchronize(context: any, deps: Deps): Promis
 
   // Digest large diffs so decompose sees the WHOLE PR, not just its first 8000 chars (classify
   // above still runs on the raw diff for accurate line counts). Small diffs pass through as-is.
-  const d = await decompose(diffDigest(diff), deps.backend);
+  // Fold the codebase graph into decompose's input: the diff (digested) PLUS a compact map of how
+  // the changed files sit in the repo (criticality + who references them). Best-effort — a null
+  // structural context just falls back to diff-only decomposition. This is what makes the gate
+  // criticality- and interaction-aware ("this touches a hub referenced by N files").
+  const sc = await structuralContext(octokit, owner, repo, pr.head.sha, files);
+  const plan = sc.text ? `${diffDigest(diff)}\n\n${sc.text}` : diffDigest(diff);
+  const d = await decompose(plan, deps.backend);
   const decisions: Decision[] = d.ok ? d.decisions : [];
   const newHash = hash(JSON.stringify(decisions));
   const latest = await deps.store.findLatestCheckpoint(repository.id, pr.number);
