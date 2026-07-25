@@ -13,6 +13,7 @@ import * as gh from './github.js';
 import { elicitBody, rescueBody, passBody, ungradedBody, cappedBody } from './format.js';
 import { closeout } from './closeout.js';
 import { hash, classify, decisionsToGroundTruth } from './util.js';
+import { diffDigest } from './diff-digest.js';
 
 export interface Deps {
   store: SupabaseStore;
@@ -90,7 +91,9 @@ async function openGate(context: any, deps: Deps): Promise<void> {
     return;
   }
 
-  const d = await decompose(diff, deps.backend);
+  // Digest large diffs so decompose sees the WHOLE PR, not just its first 8000 chars (classify
+  // above still runs on the raw diff for accurate line counts). Small diffs pass through as-is.
+  const d = await decompose(diffDigest(diff), deps.backend);
   const decisions: Decision[] = d.ok ? d.decisions : [];
   const check_run_id = await gh.createPendingCheck(octokit, owner, repo, pr.head.sha);
   await deps.store.createCheckpoint({
@@ -189,7 +192,9 @@ export async function onPullRequestSynchronize(context: any, deps: Deps): Promis
     return;
   }
 
-  const d = await decompose(diff, deps.backend);
+  // Digest large diffs so decompose sees the WHOLE PR, not just its first 8000 chars (classify
+  // above still runs on the raw diff for accurate line counts). Small diffs pass through as-is.
+  const d = await decompose(diffDigest(diff), deps.backend);
   const decisions: Decision[] = d.ok ? d.decisions : [];
   const newHash = hash(JSON.stringify(decisions));
   const latest = await deps.store.findLatestCheckpoint(repository.id, pr.number);
