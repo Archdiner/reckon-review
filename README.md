@@ -66,6 +66,9 @@ own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wro
 
 - **push more code?** it re-checks. unchanged decisions carry your pass forward.
 - **trivial PR?** (docs, lockfiles, tiny diffs) → passes automatically.
+- **peripheral-only?** (styles, assets, tests, config) → passes automatically. Reckon maps
+  how your change fits the codebase and only gates the load-bearing parts.
+- **touches a hub?** (code many files depend on) → graded more strictly.
 - **one reviewer** with write access explaining it clears the gate.
 
 ---

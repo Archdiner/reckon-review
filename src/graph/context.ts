@@ -16,7 +16,8 @@ const DEFAULT_TIMEOUT_MS = 8000;
 
 export interface StructuralContext {
   text: string; // the serialized context, or '' if unavailable
-  coreCount: number; // changed files tiered 'core' (for future policy; unused today)
+  coreCount: number; // changed files tiered 'core'
+  hubCount: number; // changed files that are load-bearing hubs (fan-in >= HUB_FANIN) → harsh rigor
 }
 
 export async function structuralContext(
@@ -27,7 +28,7 @@ export async function structuralContext(
   changedPaths: string[],
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<StructuralContext> {
-  const empty: StructuralContext = { text: '', coreCount: 0 };
+  const empty: StructuralContext = { text: '', coreCount: 0, hubCount: 0 };
   // Skip entirely if none of the changed files are in a language we can extract — no point
   // pulling a tarball to learn nothing.
   const changedSupported = changedPaths.filter((p) => extractorFor(p));
@@ -38,11 +39,15 @@ export async function structuralContext(
       const { files, truncated } = await fetchRepoSources(octokit, owner, repo, ref);
       if (files.length === 0) return empty;
       const g = buildGraph(files);
-      const { criticality } = await import('./repo-map.js');
+      const { criticality, HUB_FANIN } = await import('./repo-map.js');
       const tiers = criticality(g, changedSupported);
       let text = serializeContext(g, changedSupported);
       if (truncated) text += '\n(note: large repo — graph built over a bounded subset of files)';
-      return { text, coreCount: tiers.filter((t) => t.tier === 'core').length };
+      return {
+        text,
+        coreCount: tiers.filter((t) => t.tier === 'core').length,
+        hubCount: tiers.filter((t) => t.fanIn >= HUB_FANIN).length,
+      };
     })();
     const timeout = new Promise<StructuralContext>((resolve) => setTimeout(() => resolve(empty), timeoutMs));
     return await Promise.race([work, timeout]);

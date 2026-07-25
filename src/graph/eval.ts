@@ -10,7 +10,7 @@
  * that name-based extraction CANNOT resolve, so aggregate recall is < 100% by construction. That
  * gap is the point — it's the measured version of "a lower bound on blast radius" (docs §3).
  */
-import { buildGraph, criticality, neighborhood, serializeContext, type RepoFile, type Tier } from './repo-map.js';
+import { buildGraph, criticality, neighborhood, serializeContext, pathTier, type RepoFile, type Tier } from './repo-map.js';
 
 interface Fixture {
   name: string;
@@ -135,13 +135,33 @@ function main(): void {
   console.log(`   ${N} files, build+rank+serialize   ${ms}ms   ${ok(ms < 1000)}  (<1000ms)`);
   console.log(`   serialized context size            ${ctx.length} chars   ${ok(ctx.length <= 1200)}  (<=budget 1200)`);
 
+  // 4. POLICY (criticality → gate behavior)
+  const policyCases: Array<[string, Tier]> = [
+    ['src/ui/button.css', 'peripheral'],
+    ['src/api/login.test.ts', 'peripheral'],
+    ['config/app.json', 'peripheral'],
+    ['README.md', 'trivial'],
+    ['src/auth/session.ts', 'core'],
+    ['src/components/Button.tsx', 'core'], // frontend LOGIC still gates (not peripheral)
+  ];
+  const policyOk = policyCases.filter(([p, t]) => pathTier(p) === t).length;
+  const peripheralOnlySkips = ['a.css', 'b.test.ts', 'c.md', 'd.json'].every((f) => pathTier(f) !== 'core');
+  const mixedGates = !['a.css', 'src/core.ts'].every((f) => pathTier(f) !== 'core'); // has a .ts → must gate
+  console.log('\n4. POLICY (criticality → gate behavior)');
+  console.log(`   path tiering          ${policyOk}/${policyCases.length}   ${ok(policyOk === policyCases.length)}`);
+  console.log(`   peripheral-only → skip   ${ok(peripheralOnlySkips)}   (css+test+md+json auto-pass)`);
+  console.log(`   any source file → gate   ${ok(mixedGates)}   (css + .ts still gates)`);
+
   const pass =
     precision >= 0.9 &&
     recoverableRecall >= 0.99 &&
     tierCorrect === tierTotal &&
     cov.every((c) => c.got === c.want) &&
     ms < 1000 &&
-    ctx.length <= 1200;
+    ctx.length <= 1200 &&
+    policyOk === policyCases.length &&
+    peripheralOnlySkips &&
+    mixedGates;
   console.log(`\n==> GRAPH EVAL: ${pass ? 'PASS' : 'FAIL'}  (recoverable edges exact; dynamic dispatch is a documented, advisory lower bound)\n`);
   process.exit(pass ? 0 : 1);
 }

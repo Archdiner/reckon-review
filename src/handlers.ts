@@ -15,6 +15,7 @@ import { closeout } from './closeout.js';
 import { hash, classify, decisionsToGroundTruth } from './util.js';
 import { diffDigest } from './diff-digest.js';
 import { structuralContext } from './graph/context.js';
+import { pathTier } from './graph/repo-map.js';
 
 export interface Deps {
   store: SupabaseStore;
@@ -85,6 +86,14 @@ async function openGate(context: any, deps: Deps): Promise<void> {
     return;
   }
 
+  // Policy A (criticality → policy): a PR that touches only PERIPHERAL files — styles, assets,
+  // tests, config, docs — with no source-logic file gets no comprehension gate. Path-based, so it
+  // needs no graph fetch; any .ts/.js logic file tiers 'core' and still gates. "Don't quiz me on CSS."
+  if (files.length > 0 && files.every((f) => pathTier(f) !== 'core')) {
+    await gh.createSuccessCheck(octokit, owner, repo, pr.head.sha, 'Peripheral change — no comprehension needed', 'only styles/assets/tests/config/docs changed');
+    return;
+  }
+
   const capped = await overLimit(context, deps);
   if (capped) {
     await gh.createNeutralCheck(octokit, owner, repo, pr.head.sha, 'Reckon Review beta limit', `${capped} daily beta limit reached`);
@@ -105,12 +114,14 @@ async function openGate(context: any, deps: Deps): Promise<void> {
     sc.text ? 'reckon: structural context built (graph used)' : 'reckon: no structural context (diff-only)',
   );
   const plan = sc.text ? `${diffDigest(diff)}\n\n${sc.text}` : diffDigest(diff);
+  // Policy B: a change touching a load-bearing HUB (referenced by many files) is graded strictly.
+  const rigor: 'medium' | 'harsh' = sc.hubCount > 0 ? 'harsh' : deps.rigor;
   const d = await decompose(plan, deps.backend);
   const decisions: Decision[] = d.ok ? d.decisions : [];
   const check_run_id = await gh.createPendingCheck(octokit, owner, repo, pr.head.sha);
   await deps.store.createCheckpoint({
     repo_id: repository.id, pr_number: pr.number, pr_node_id: pr.node_id, head_sha: pr.head.sha,
-    check_run_id, decisions, decisions_hash: hash(JSON.stringify(decisions)), rigor: deps.rigor,
+    check_run_id, decisions, decisions_hash: hash(JSON.stringify(decisions)), rigor,
   });
   await gh.postComment(octokit, owner, repo, pr.number, elicitBody(decisions));
 }
@@ -197,6 +208,14 @@ export async function onPullRequestSynchronize(context: any, deps: Deps): Promis
     return;
   }
 
+  // Policy A (criticality → policy): a PR that touches only PERIPHERAL files — styles, assets,
+  // tests, config, docs — with no source-logic file gets no comprehension gate. Path-based, so it
+  // needs no graph fetch; any .ts/.js logic file tiers 'core' and still gates. "Don't quiz me on CSS."
+  if (files.length > 0 && files.every((f) => pathTier(f) !== 'core')) {
+    await gh.createSuccessCheck(octokit, owner, repo, pr.head.sha, 'Peripheral change — no comprehension needed', 'only styles/assets/tests/config/docs changed');
+    return;
+  }
+
   const capped = await overLimit(context, deps);
   if (capped) {
     await gh.createNeutralCheck(octokit, owner, repo, pr.head.sha, 'Reckon Review beta limit', `${capped} daily beta limit reached`);
@@ -217,6 +236,8 @@ export async function onPullRequestSynchronize(context: any, deps: Deps): Promis
     sc.text ? 'reckon: structural context built (graph used)' : 'reckon: no structural context (diff-only)',
   );
   const plan = sc.text ? `${diffDigest(diff)}\n\n${sc.text}` : diffDigest(diff);
+  // Policy B: a change touching a load-bearing HUB (referenced by many files) is graded strictly.
+  const rigor: 'medium' | 'harsh' = sc.hubCount > 0 ? 'harsh' : deps.rigor;
   const d = await decompose(plan, deps.backend);
   const decisions: Decision[] = d.ok ? d.decisions : [];
   const newHash = hash(JSON.stringify(decisions));
@@ -232,7 +253,7 @@ export async function onPullRequestSynchronize(context: any, deps: Deps): Promis
   const check_run_id = await gh.createPendingCheck(octokit, owner, repo, pr.head.sha);
   await deps.store.createCheckpoint({
     repo_id: repository.id, pr_number: pr.number, pr_node_id: pr.node_id, head_sha: pr.head.sha,
-    check_run_id, decisions, decisions_hash: newHash, rigor: deps.rigor,
+    check_run_id, decisions, decisions_hash: newHash, rigor,
   });
   await gh.postComment(octokit, owner, repo, pr.number, elicitBody(decisions));
 }

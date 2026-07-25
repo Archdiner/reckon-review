@@ -129,6 +129,16 @@ export type Tier = 'core' | 'peripheral' | 'trivial';
 const TRIVIAL = [/\.(md|txt|rst)$/i, /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/i, /(^|\/)(dist|build|generated)\//i, /\.min\.(js|css)$/i];
 const PERIPHERAL = [/\.(css|scss|less|svg|png|jpg|ico|woff2?)$/i, /(^|\/)(assets|public|static)\//i, /\.(test|spec)\.[jt]sx?$/i, /(^|\/)__tests__\//i, /\.(html|md?x)$/i, /\.(json|ya?ml|toml)$/i];
 const CORE_FANIN = 3; // referenced by >= this many files → core regardless of path
+export const HUB_FANIN = 8; // referenced by >= this many files → a load-bearing hub (→ harsh rigor)
+
+/** Path-only tier (no graph needed): the cheap, always-available signal used for the
+ *  peripheral-only skip. A source-code path defaults to 'core' unless it matches a
+ *  non-logic pattern (styles, assets, tests, config, docs). */
+export function pathTier(path: string): Tier {
+  if (TRIVIAL.some((r) => r.test(path))) return 'trivial';
+  if (PERIPHERAL.some((r) => r.test(path))) return 'peripheral';
+  return 'core';
+}
 
 export interface CriticalityTier {
   path: string;
@@ -140,9 +150,10 @@ export interface CriticalityTier {
 export function criticality(g: Graph, changed: string[]): CriticalityTier[] {
   return changed.map((path) => {
     const fi = fanIn(g, path);
-    if (TRIVIAL.some((r) => r.test(path))) return { path, tier: 'trivial' as Tier, fanIn: fi, reason: 'generated/docs/lockfile' };
+    const pt = pathTier(path);
+    if (pt === 'trivial') return { path, tier: 'trivial' as Tier, fanIn: fi, reason: 'generated/docs/lockfile' };
     if (fi >= CORE_FANIN) return { path, tier: 'core' as Tier, fanIn: fi, reason: `hub: referenced by ${fi} files` };
-    if (PERIPHERAL.some((r) => r.test(path))) return { path, tier: 'peripheral' as Tier, fanIn: fi, reason: 'peripheral file type, low fan-in' };
+    if (pt === 'peripheral') return { path, tier: 'peripheral' as Tier, fanIn: fi, reason: 'peripheral file type, low fan-in' };
     return { path, tier: 'core' as Tier, fanIn: fi, reason: fi > 0 ? `referenced by ${fi} file(s)` : 'source file' };
   });
 }
