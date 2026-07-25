@@ -98,7 +98,12 @@ async function openGate(context: any, deps: Deps): Promise<void> {
   // the changed files sit in the repo (criticality + who references them). Best-effort — a null
   // structural context just falls back to diff-only decomposition. This is what makes the gate
   // criticality- and interaction-aware ("this touches a hub referenced by N files").
+  const scStart = Date.now();
   const sc = await structuralContext(octokit, owner, repo, pr.head.sha, files);
+  context.log?.info?.(
+    { pr: pr.number, repo: `${owner}/${repo}`, graphChars: sc.text.length, coreFiles: sc.coreCount, ms: Date.now() - scStart },
+    sc.text ? 'reckon: structural context built (graph used)' : 'reckon: no structural context (diff-only)',
+  );
   const plan = sc.text ? `${diffDigest(diff)}\n\n${sc.text}` : diffDigest(diff);
   const d = await decompose(plan, deps.backend);
   const decisions: Decision[] = d.ok ? d.decisions : [];
@@ -205,7 +210,12 @@ export async function onPullRequestSynchronize(context: any, deps: Deps): Promis
   // the changed files sit in the repo (criticality + who references them). Best-effort — a null
   // structural context just falls back to diff-only decomposition. This is what makes the gate
   // criticality- and interaction-aware ("this touches a hub referenced by N files").
+  const scStart = Date.now();
   const sc = await structuralContext(octokit, owner, repo, pr.head.sha, files);
+  context.log?.info?.(
+    { pr: pr.number, repo: `${owner}/${repo}`, graphChars: sc.text.length, coreFiles: sc.coreCount, ms: Date.now() - scStart },
+    sc.text ? 'reckon: structural context built (graph used)' : 'reckon: no structural context (diff-only)',
+  );
   const plan = sc.text ? `${diffDigest(diff)}\n\n${sc.text}` : diffDigest(diff);
   const d = await decompose(plan, deps.backend);
   const decisions: Decision[] = d.ok ? d.decisions : [];
