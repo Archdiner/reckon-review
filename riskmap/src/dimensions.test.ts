@@ -249,12 +249,23 @@ console.log('\ncalibration tests');
   const cal = loadCalibration();
   ok('the calibration file loads', cal !== null);
   if (cal) {
-    ok('it carries the full corpus', cal.n === 1000 && cal.sorted.length === 1000);
-    ok('THE ZERO-INFLATION FACT: over half the corpus scores zero', cal.shareAtZero > 0.5);
-    ok('the bottom five deciles are all zero, so "decile" is unusable', cal.deciles.slice(0, 5).every((d) => d === 0));
+    // THE COMPARISON SET IS SUBSTANTIVE-ONLY, and that is the correction. This tool scores only
+    // substantive commits, so comparing against a corpus that also holds 164 empty and 125 trivial
+    // records made every percentile 8-17 points too flattering — a bias opposite in sign to the
+    // "biased low" hedge the tool used to ship, and larger.
+    ok('percentiles use the substantive-only set, not all 1,000 PRs', cal.n === 711 && cal.sorted.length === 711);
+    ok('the unrestricted distribution is retained so the restriction is checkable', (cal.sortedAll?.length ?? 0) === 1000);
+    ok('the scoring mode is recorded, having previously been mislabelled', cal.scoringMode === 'paired');
+    ok('THE ZERO MASS SURVIVES THE RESTRICTION: over a third still score zero', cal.shareAtZero > 0.35 && cal.shareAtZero < 0.45);
+    ok('and it shrank, which is exactly why percentiles were too flattering', cal.shareAtZero < (cal.shareAtZeroAll ?? 1));
     ok(
-      'a zero-coverage region reports a percentile above the undocumented threshold floor',
-      midrankPercentile(cal.sorted, 0) > 25 && midrankPercentile(cal.sorted, 0) < DEFAULT_THRESHOLDS.coveragePercentile
+      'the undocumented threshold still sits just above the zero mass in the corrected set',
+      midrankPercentile(cal.sorted, 0) < DEFAULT_THRESHOLDS.coveragePercentile &&
+        DEFAULT_THRESHOLDS.coveragePercentile - midrankPercentile(cal.sorted, 0) < 6
+    );
+    ok(
+      'the restriction really does move a percentile by a lot',
+      midrankPercentile(cal.sortedAll ?? [], 0.1) - midrankPercentile(cal.sorted, 0.1) > 8
     );
     ok('the phrasing says tied rather than ranked inside the zero mass', /tie/.test(describePercentile(cal, 0)));
     ok('the phrasing avoids the word decile', !/decile/.test(describePercentile(cal, 0)));

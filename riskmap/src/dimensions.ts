@@ -62,14 +62,19 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
    */
   commitsPerMonth: 1,
   /**
-   * Set just above the calibration corpus's zero mass, not to a round number.
+   * Set just above the calibration corpus's zero mass, not to a round number — and it MOVED when
+   * the comparison set was corrected.
    *
-   * 55.7% of the 1,000 study PRs score exactly zero explicit answers, so a zero-coverage
-   * region's midrank percentile is 27.85. Any threshold below that could never fire on a
-   * region whose sampled commits explained nothing at all, which would make the dimension
-   * decorative. See calibration.ts for the full argument.
+   * Percentiles are now taken against the substantive-only distribution (n=711), because this tool
+   * only scores substantive commits and comparing against a corpus containing 164 empty and 125
+   * trivial records inflated every percentile by 8-17 points. In that corrected set 38.4% score
+   * exactly zero rather than 55.7%, so a zero-coverage region's midrank is 19.2 rather than 27.85.
+   *
+   * The threshold follows it down to 22. Any value below the zero mass's midrank could never fire
+   * on a region whose commits explained nothing at all; any value far above it fires on regions
+   * that did explain something. See calibration.ts for why the comparison set changed.
    */
-  coveragePercentile: 30,
+  coveragePercentile: 22,
   minFlags: 3,
   regionMinCommits: 15,
   maxFilesPerCommit: 300,

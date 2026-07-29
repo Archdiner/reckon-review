@@ -425,16 +425,12 @@ export function renderRecordMapPage(map: RecordMap, svg: string): string {
     ${
       map.calibration
         ? `<h2>Calibration</h2>
-           <p>For context rather than for colour: against ${map.calibration.n.toLocaleString('en-US')}
-              merged pull requests from five large open-source projects,
-              ${(map.calibration.shareAtZero * 100).toFixed(1)}% of which explain nothing at all.
-              Percentiles against that corpus are in the JSON alongside this page.</p>
-           <p><strong>One known bias.</strong> That corpus scores pull-request records — description
-              plus commit messages — while this scores commit messages only, because a clone is the
-              whole input and descriptions are not in one. Commit-only is a subset, so every cell
-              here reads lower than the corpus comparison implies. The magnitude is being measured
-              separately; until it is, treat the colours as comparable to each other and not to the
-              corpus.</p>`
+    <p>
+      Coverage here is comparable <strong>across the areas of this repository</strong>. A position
+      against the study's ${map.calibration.n.toLocaleString('en-US')}-record corpus is in the JSON
+      alongside this page, computed against the substantive-record subset — the like-for-like set,
+      since only substantive commits are scored here.
+    </p>`
         : ''
     }
   </footer>
