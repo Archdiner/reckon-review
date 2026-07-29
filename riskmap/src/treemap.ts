@@ -381,13 +381,14 @@ export function esc(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Trim a float for output. Keeps the bytes short and identical run to run. */
+/** The output grid: two decimals, which is finer than any display and keeps the bytes short. */
+const snap = (v: number) => Math.round(v * 100) / 100;
+
+/** Trim a float for output. Identical run to run, and `-0` never reaches the file. */
 function num(v: number): string {
   const r = snap(v);
   return Object.is(r, -0) ? '0' : String(r);
 }
-
-const snap = (v: number) => Math.round(v * 100) / 100;
 
 /**
  * Emit a rectangle's attributes by snapping its EDGES to the output grid rather than its width

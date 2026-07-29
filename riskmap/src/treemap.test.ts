@@ -22,6 +22,8 @@ import {
   coverageLabel,
   planLabel,
   relativeLuminance,
+  contrastRatio,
+  labelInkFor,
   esc,
   LIGHT_RAMP,
   DARK_RAMP,
