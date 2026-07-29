@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="698" viewBox="0 0 940 698" role="img" aria-label="Areas sized by lines changed, shaded by how much the record explains">
+<style>
+  #v4 { --ink:#0d2f4a; --mut:#5b7789; --line:#cfe2ea; --bg:#ffffff; --accent:#4a90ab;
+           --b0:#0d2f4a; --b1:#255f7f; --b2:#4a90ab; --b3:#93c1d3; --b4:#d5e7ef;
+           --thin:#a8cddb; }
+  @media (prefers-color-scheme:dark) {
+    #v4 { --ink:#eaf3f7; --mut:#8fb0c2; --line:#1d3f57; --bg:#0b1f30; --accent:#6fa9c2;
+             --b0:#cfe7f2; --b1:#8fc0d5; --b2:#4a90ab; --b3:#2c5b74; --b4:#16344a;
+             --thin:#3a6d86; }
+  }
+  #v4 .bgr { fill:var(--bg) }
+  #v4 text { font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; fill:var(--ink) }
+  #v4 .kicker { font-size:11.5px; fill:var(--mut); letter-spacing:.02em }
+  #v4 .headline { font-size:27px; font-weight:800; letter-spacing:-.015em }
+  #v4 .headsub { font-size:12.5px; fill:var(--mut) }
+  #v4 .h2 { font-size:12px; font-weight:700; letter-spacing:.03em }
+  #v4 .sub { font-size:11px; fill:var(--mut) }
+  #v4 .path { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; font-size:11.5px }
+  #v4 .val { font-size:12.5px; font-weight:700; font-variant-numeric:tabular-nums }
+  #v4 .num { font-size:10.5px; fill:var(--mut); font-variant-numeric:tabular-nums }
+  #v4 .grid { stroke:var(--line); stroke-width:1 }
+  #v4 .b0 { fill:var(--b0) } #v4 .b1 { fill:var(--b1) } #v4 .b2 { fill:var(--b2) }
+  #v4 .b3 { fill:var(--b3) } #v4 .b4 { fill:var(--b4) }
+  #v4 .ci { stroke:var(--accent); stroke-width:3; stroke-linecap:round }
+  #v4 .ci-thin { stroke:var(--thin); stroke-width:3; stroke-linecap:round; stroke-dasharray:2 3 }
+  #v4 .dot { fill:var(--ink) }
+  #v4 .dot-thin { fill:var(--bg); stroke:var(--thin); stroke-width:2 }
+  #v4 .live { fill:var(--accent) }
+  #v4 .tmlabel { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; font-size:10.5px; fill:#fff; paint-order:stroke; stroke:rgba(0,0,0,.28); stroke-width:2.4px }
+  #v4 .tmval { font-size:12px; font-weight:800; fill:#fff; paint-order:stroke; stroke:rgba(0,0,0,.28); stroke-width:2.4px }
+  @media (prefers-color-scheme:dark) {
+    #v4 .tmlabel, #v4 .tmval { fill:#08202f; stroke:rgba(255,255,255,.3) }
+  }</style><g id="v4"><rect class="bgr" width="940" height="698"/>
+
+<text x="28" y="34" class="kicker">grafana/grafana · 3c66fe6f38 · 24-month window · 18,545 commits</text>
+<text x="28" y="82" class="headline">The commit history explains 25% of what changed</text>
+<text x="28" y="106" class="headsub">737 of 2,931 mechanism questions answered outright · 63 areas measured</text>
+<text x="28" y="152" class="h2">SIZED BY LINES CHANGED</text>
+<text x="592" y="136" class="sub"></text><rect x="592" y="144" width="32" height="10" class="b0" rx="1"/><rect x="626" y="144" width="32" height="10" class="b1" rx="1"/><rect x="660" y="144" width="32" height="10" class="b2" rx="1"/><rect x="694" y="144" width="32" height="10" class="b3" rx="1"/><rect x="728" y="144" width="32" height="10" class="b4" rx="1"/><text x="592" y="168" class="num">least explained</text><text x="760" y="168" class="num" text-anchor="end">most</text><text x="776" y="153" class="num">breaks at 14% · 21% · 26% · 35%</text>
+<g><rect x="28.0" y="186.0" width="229.1" height="257.9" class="b3" rx="2"/>
+<text x="36.0" y="205.0" class="tmlabel">apps</text>
+<text x="36.0" y="220.0" class="tmval">27%</text></g><g><rect x="28.0" y="445.9" width="229.1" height="168.1" class="b4" rx="2"/>
+<text x="36.0" y="464.9" class="tmlabel">pkg/services</text>
+<text x="36.0" y="479.9" class="tmval">42%</text></g><g><rect x="259.1" y="186.0" width="156.9" height="240.2" class="b1" rx="2"/>
+<text x="267.1" y="205.0" class="tmlabel">packages</text>
+<text x="267.1" y="220.0" class="tmval">15%</text></g><g><rect x="259.1" y="428.2" width="156.9" height="185.8" class="b3" rx="2"/>
+<text x="267.1" y="447.2" class="tmlabel">pkg/registry</text>
+<text x="267.1" y="462.2" class="tmval">33%</text></g><g><rect x="418.1" y="186.0" width="150.4" height="167.2" class="b4" rx="2"/>
+<text x="426.1" y="205.0" class="tmlabel">pkg/tests</text>
+<text x="426.1" y="220.0" class="tmval">40%</text></g><g><rect x="418.1" y="355.2" width="150.4" height="133.3" class="b3" rx="2"/>
+<text x="426.1" y="374.2" class="tmlabel">public/app/plugins</text>
+<text x="426.1" y="389.2" class="tmval">30%</text></g><g><rect x="418.1" y="490.5" width="150.4" height="123.5" class="b4" rx="2"/>
+<text x="426.1" y="509.5" class="tmlabel">pkg/storage</text>
+<text x="426.1" y="524.5" class="tmval">37%</text></g><g><rect x="570.4" y="186.0" width="138.9" height="130.7" class="b1" rx="2"/>
+<text x="578.4" y="205.0" class="tmlabel">…res/dashboard-scene</text>
+<text x="578.4" y="220.0" class="tmval">20%</text></g><g><rect x="711.3" y="186.0" width="104.0" height="130.7" class="b3" rx="2"/>
+<text x="719.3" y="205.0" class="tmlabel">…ures/alerting</text>
+<text x="719.3" y="220.0" class="tmval">31%</text></g><g><rect x="817.4" y="186.0" width="92.6" height="130.7" class="b3" rx="2"/>
+<text x="825.4" y="205.0" class="tmlabel">pkg/tsdb</text>
+<text x="825.4" y="220.0" class="tmval">31%</text></g><g><rect x="570.4" y="318.7" width="106.0" height="105.4" class="b3" rx="2"/>
+<text x="578.4" y="337.7" class="tmlabel">docs</text>
+<text x="578.4" y="352.7" class="tmval">33%</text></g><g><rect x="570.4" y="426.1" width="106.0" height="103.6" class="b4" rx="2"/>
+<text x="578.4" y="445.1" class="tmlabel">…c/app/features</text>
+<text x="578.4" y="460.1" class="tmval">43%</text></g><g><rect x="570.4" y="531.7" width="106.0" height="82.3" class="b0" rx="2"/>
+<text x="578.4" y="550.7" class="tmlabel">(root)</text>
+<text x="578.4" y="565.7" class="tmval">12%</text></g><g><rect x="678.4" y="318.7" width="98.6" height="79.8" class="b2" rx="2"/>
+<text x="686.4" y="337.7" class="tmlabel">devenv</text>
+<text x="686.4" y="352.7" class="tmval">24%</text></g><g><rect x="779.0" y="318.7" width="67.5" height="79.8" class="b4" rx="2"/>
+</g><g><rect x="848.5" y="318.7" width="61.5" height="79.8" class="b4" rx="2"/>
+</g><g><rect x="678.4" y="400.5" width="57.2" height="77.1" class="b4" rx="2"/>
+</g><g><rect x="678.4" y="479.6" width="57.2" height="70.2" class="b2" rx="2"/>
+</g><g><rect x="678.4" y="551.8" width="57.2" height="62.2" class="b0" rx="2"/>
+</g><g><rect x="737.6" y="400.5" width="61.2" height="51.1" class="b2" rx="2"/>
+</g><g><rect x="800.8" y="400.5" width="54.0" height="51.1" class="b0" rx="2"/>
+</g><g><rect x="856.8" y="400.5" width="53.2" height="51.1" class="b3" rx="2"/>
+</g><g><rect x="737.6" y="453.7" width="31.5" height="81.0" class="b2" rx="2"/>
+</g><g><rect x="737.6" y="536.7" width="31.5" height="77.3" class="b0" rx="2"/>
+</g><g><rect x="771.1" y="453.7" width="138.9" height="160.3" fill="none" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3" rx="2"/>
+<text x="841.5" y="534.8" class="num" text-anchor="middle">39 smaller areas</text></g>
+<text x="28" y="642" class="sub">Shading uses five quantile bins of this repository's own values, so adjacent areas step visibly instead of washing together.</text>
+<text x="28" y="660" class="sub">1 translation and fixture areas excluded as high-churn, low-mechanism. Areas too small to label are folded into one cell rather than drawn as slivers.</text>
+<text x="28" y="678" class="sub">Read the shading from the strip above, not from a remembered rule — the scale inverts between light and dark themes so that the least explained areas always carry the strongest contrast.</text>
+</g></svg>

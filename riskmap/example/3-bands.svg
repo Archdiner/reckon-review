@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="560" viewBox="0 0 940 560" role="img" aria-label="Areas grouped by how much of their change the record explains">
+<style>
+  #v3 { --ink:#0d2f4a; --mut:#5b7789; --line:#cfe2ea; --bg:#ffffff; --accent:#4a90ab;
+           --b0:#0d2f4a; --b1:#255f7f; --b2:#4a90ab; --b3:#93c1d3; --b4:#d5e7ef;
+           --thin:#a8cddb; }
+  @media (prefers-color-scheme:dark) {
+    #v3 { --ink:#eaf3f7; --mut:#8fb0c2; --line:#1d3f57; --bg:#0b1f30; --accent:#6fa9c2;
+             --b0:#cfe7f2; --b1:#8fc0d5; --b2:#4a90ab; --b3:#2c5b74; --b4:#16344a;
+             --thin:#3a6d86; }
+  }
+  #v3 .bgr { fill:var(--bg) }
+  #v3 text { font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; fill:var(--ink) }
+  #v3 .kicker { font-size:11.5px; fill:var(--mut); letter-spacing:.02em }
+  #v3 .headline { font-size:27px; font-weight:800; letter-spacing:-.015em }
+  #v3 .headsub { font-size:12.5px; fill:var(--mut) }
+  #v3 .h2 { font-size:12px; font-weight:700; letter-spacing:.03em }
+  #v3 .sub { font-size:11px; fill:var(--mut) }
+  #v3 .path { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; font-size:11.5px }
+  #v3 .val { font-size:12.5px; font-weight:700; font-variant-numeric:tabular-nums }
+  #v3 .num { font-size:10.5px; fill:var(--mut); font-variant-numeric:tabular-nums }
+  #v3 .grid { stroke:var(--line); stroke-width:1 }
+  #v3 .b0 { fill:var(--b0) } #v3 .b1 { fill:var(--b1) } #v3 .b2 { fill:var(--b2) }
+  #v3 .b3 { fill:var(--b3) } #v3 .b4 { fill:var(--b4) }
+  #v3 .ci { stroke:var(--accent); stroke-width:3; stroke-linecap:round }
+  #v3 .ci-thin { stroke:var(--thin); stroke-width:3; stroke-linecap:round; stroke-dasharray:2 3 }
+  #v3 .dot { fill:var(--ink) }
+  #v3 .dot-thin { fill:var(--bg); stroke:var(--thin); stroke-width:2 }
+  #v3 .live { fill:var(--accent) }</style><g id="v3"><rect class="bgr" width="940" height="560"/>
+
+<text x="28" y="34" class="kicker">grafana/grafana · 3c66fe6f38 · 24-month window · 18,545 commits</text>
+<text x="28" y="82" class="headline">The commit history explains 25% of what changed</text>
+<text x="28" y="106" class="headsub">737 of 2,931 mechanism questions answered outright · 63 areas measured</text>
+<text x="28" y="154" class="h2">HOW MANY AREAS SIT AT EACH LEVEL</text>
+<text x="912" y="154" class="sub" text-anchor="end">bar length = number of areas</text>
+<g>
+  <text x="120" y="198" class="path" text-anchor="end">under 10%</text>
+  <rect x="132" y="182" width="170.9" height="26" rx="2" class="b0"/>
+  <text x="312.8571428571429" y="200" class="val">6</text>
+  <text x="912" y="200" class="num" text-anchor="end">1% of all change</text>
+</g><g>
+  <text x="120" y="250" class="path" text-anchor="end">10–20%</text>
+  <rect x="132" y="234" width="427.1" height="26" rx="2" class="b1"/>
+  <text x="569.1428571428571" y="252" class="val">15</text>
+  <text x="912" y="252" class="num" text-anchor="end">15% of all change</text>
+</g><g>
+  <text x="120" y="302" class="path" text-anchor="end">20–30%</text>
+  <rect x="132" y="286" width="598.0" height="26" rx="2" class="b2"/>
+  <text x="740" y="304" class="val">21</text>
+  <text x="912" y="304" class="num" text-anchor="end">29% of all change</text>
+</g><g>
+  <text x="120" y="354" class="path" text-anchor="end">30–40%</text>
+  <rect x="132" y="338" width="370.2" height="26" rx="2" class="b3"/>
+  <text x="512.1904761904761" y="356" class="val">13</text>
+  <text x="912" y="356" class="num" text-anchor="end">31% of all change</text>
+</g><g>
+  <text x="120" y="406" class="path" text-anchor="end">40–50%</text>
+  <rect x="132" y="390" width="113.9" height="26" rx="2" class="b4"/>
+  <text x="255.9047619047619" y="408" class="val">4</text>
+  <text x="912" y="408" class="num" text-anchor="end">21% of all change</text>
+</g><g>
+  <text x="120" y="458" class="path" text-anchor="end">50% and up</text>
+  <rect x="132" y="442" width="113.9" height="26" rx="2" class="b4"/>
+  <text x="255.9047619047619" y="460" class="val">4</text>
+  <text x="912" y="460" class="num" text-anchor="end">2% of all change</text>
+</g>
+<text x="28" y="526" class="sub">The right column weights each band by lines changed, so a band holding few areas but much of the change is visible as such.</text>
+<text x="28" y="544" class="sub">1 translation and fixture areas excluded as high-churn, low-mechanism.</text>
+</g></svg>
