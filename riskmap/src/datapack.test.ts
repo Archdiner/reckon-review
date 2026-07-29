@@ -125,3 +125,33 @@ if (failures > 0) {
   process.exit(1);
 }
 console.log('all data-pack tests passed');
+
+// ── THE GUARD CLASSIFIER ─────────────────────────────────────────────────────────────────────
+//
+// A real sweep tripped the scorer-side leak guard on tailwindlabs/tailwindcss, and the cause was a
+// property of the data: seven commits there quote a diff of generated CSS in their own message. The
+// fix narrowed the blast radius from "discard the repository" to "set the commit aside", and the thing
+// that must not regress is the DISTINCTION — a record that quotes a diff is skipped, while a diff that
+// this pipeline puts in front of the scorer still aborts the run.
+console.log('\nthe leak guard still fires on a real leak, and only sets aside unscorable records');
+{
+  const { assertNoRawDiff, LeakageError } = await import('./vendor/guard.js');
+  const trips = (text: string): boolean => {
+    try {
+      assertNoRawDiff(text, 'test');
+      return false;
+    } catch (e) {
+      if (e instanceof LeakageError) return true;
+      throw e;
+    }
+  };
+  ok('a pasted diff header is detected', trips('fix: regenerate\n\ndiff --git a/out.css b/out.css\n'));
+  ok('a hunk header is detected', trips('some text\n@@ -1,4 +1,7 @@\n'));
+  ok('an index line is detected', trips('some text\nindex 1234abc..def5678 100644\n'));
+  ok('ordinary prose is not', !trips('Rework the retry backoff so it does not thrash the API.'));
+  ok(
+    'prose that merely mentions the word diff is not',
+    !trips('The diff looks larger than it is; most of it is generated output.')
+  );
+  ok('a record quoting its own diff is exactly the tailwindcss case', trips('build: update\n\ndiff --git a/./main.css b/./pr.css'));
+}

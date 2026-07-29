@@ -48,6 +48,43 @@ function assertNoDiffInScorerPrompt(prompt: string): void {
 }
 
 /**
+ * Does the RECORD ITSELF contain raw diff syntax — before any prompt is built around it?
+ *
+ * ── WHY THIS DISTINCTION EXISTS, AND WHY IT IS NOT A WEAKENING OF THE GUARD ────────────────
+ *
+ * The scorer-side guard tripped on a real sweep, on `tailwindlabs/tailwindcss`. The cause was checked
+ * before anything was changed: seven commits in that repository have a PASTED DIFF IN THEIR COMMIT
+ * MESSAGE — bot commits that quote a diff of generated CSS. So the diff text was in the record, put
+ * there by the author, and it had not leaked out of this pipeline at all.
+ *
+ * The invariant the guard encodes is that THE SCORER MUST NEVER SEE DIFF TEXT. Skipping such a commit
+ * upholds that invariant exactly — the prompt is never built, never sent. What changes is the blast
+ * radius: one unscorable commit is dropped and counted, instead of a whole repository's measurement
+ * being discarded. A record that quotes its own diff cannot be scored fairly in either direction, so
+ * it is not scorable data, and that is a different fact from a defect in this code.
+ *
+ * WHAT IS DELIBERATELY NOT DONE: stripping the diff out of the record and scoring the remainder. That
+ * would silently change the object being measured, and the number it produced would not be the
+ * coverage of any record that exists.
+ *
+ * A LEAK CAUSED BY THIS PIPELINE IS STILL FATAL. If the record is clean and the assembled prompt is
+ * not, the diff got in here, and `scoreOne`'s assertion aborts the run as it always has. The two cases
+ * are now distinguishable, which they were not before.
+ *
+ * The test is the VENDORED ASSERTION ITSELF, caught rather than reimplemented, so this classifier and
+ * the guard can never disagree about what counts as diff syntax.
+ */
+function recordContainsRawDiff(record: string): boolean {
+  try {
+    assertNoRawDiff(record, 'coverage/record-precheck');
+    return false;
+  } catch (e) {
+    if (e instanceof LeakageError) return true;
+    throw e;
+  }
+}
+
+/**
  * Containment is delegated to the study's audited guard rather than reimplemented.
  *
  * THREE ATTEMPTS AT THIS FAILED BEFORE VENDORING IT. The first could not fire at all — it
@@ -161,6 +198,8 @@ export interface CoverageResult {
   /** Region path → the full estimate with its counts. */
   detail: Map<string, RegionCoverage>;
   questionsAsked: number;
+  /** Sampled commits set aside because their own message quotes a diff, so no prompt was ever built. */
+  unscorableRecords: number;
 }
 
 /**
@@ -182,6 +221,9 @@ export async function computeCoverage(
   const scored = new Map<string, number>();
   const detail = new Map<string, RegionCoverage>();
   let questionsAsked = 0;
+  // Commits whose own message quotes a diff. Counted rather than silently dropped: it is a property of
+  // the repository's commit conventions and a reader should be able to see how much was set aside.
+  let unscorableRecords = 0;
 
   const conc = Math.max(1, opts.concurrency ?? 8);
 
@@ -211,6 +253,10 @@ export async function computeCoverage(
       if (!diff.trim()) return null;
 
       const record = `${c.subject}\n\n${c.body}`.trim();
+
+      // A record that quotes its own diff is not scorable. Dropped and counted here, before a prompt
+      // exists — see `recordContainsRawDiff` for why this upholds the guard rather than relaxing it.
+      if (recordContainsRawDiff(record)) return { unscorable: 'record-quotes-its-own-diff' as const };
 
       // Same digest the product uses, so every changed file is represented rather than the first
       // few thousand characters. Guard the INPUT: an earlier version inspected decompose's OUTPUT
@@ -243,6 +289,10 @@ export async function computeCoverage(
     let usedCommits = 0;
     for (const r of perCommit) {
       if (!r) continue;
+      if ('unscorable' in r) {
+        unscorableRecords++;
+        continue;
+      }
       usedCommits++;
       total += r.total;
       explicit += r.explicit;
@@ -262,7 +312,13 @@ export async function computeCoverage(
   }
 
   rmSync(guardDir, { recursive: true, force: true });
-  return { coverage, scored, detail, questionsAsked };
+  if (unscorableRecords > 0) {
+    opts.onProgress?.(
+      `${unscorableRecords} sampled commits set aside: their own message quotes a diff, so the scorer ` +
+        'could not judge the text alone'
+    );
+  }
+  return { coverage, scored, detail, questionsAsked, unscorableRecords };
 }
 
 /** Attach coverage and its percentile to the regions. */

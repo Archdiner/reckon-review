@@ -24,7 +24,7 @@
  *
  * So the sweep caps AREAS and keeps DEPTH: the largest `maxRegions` areas by lines changed, at the
  * full per-area sample. Both numbers are recorded per repository, and the count of unscored areas
- * traves with the map, so nobody reads a top slice as a whole tree.
+ * travels with the map, so nobody reads a top slice as a whole tree.
  *
  * ── DISK, WHICH IS THE OTHER CONSTRAINT ───────────────────────────────────────────────────
  *
@@ -39,6 +39,13 @@
  * repository that fails is recorded as a failure and the sweep continues: losing nineteen scored
  * repositories to a transport error on the twentieth would be a pure waste with no analytical
  * justification.
+ *
+ * ONE EXCEPTION TO THAT, AND IT IS NOT NEGOTIABLE. A tripped information-separation guard aborts the
+ * whole sweep. A leak means the measurement is invalid wherever it happens, and carrying on would
+ * produce twenty numbers indistinguishable from clean ones. (The one trip seen in practice — a
+ * tailwindcss commit quoting a diff of generated CSS in its own message — turned out to be a property
+ * of the data rather than a defect here, and `coverage.ts` now sets those commits aside before a prompt
+ * is ever built, so it no longer reaches this handler. Anything that does is real.)
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
@@ -47,6 +54,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { LlmBackend } from '@reckon/core';
 import { buildRecordMap, type RecordMap } from './recordmap.js';
+import { LeakageError } from './coverage.js';
 import { parseRepoList, freeBytes, CLONE_SINCE, MIN_FREE_BYTES, DiskSpaceError, type RepoSpec } from './sweep.js';
 
 const exec = promisify(execFile);
@@ -246,6 +254,13 @@ export async function runRecordSweep(opts: RecordSweepOpts): Promise<RecordSweep
       );
     } catch (e) {
       if (e instanceof DiskSpaceError) throw e;
+      // A LEAK IS NEVER ONE REPOSITORY'S PROBLEM. If the diff reached the scorer or the message reached
+      // the generator, the measurement is invalid wherever it happens, and continuing would produce
+      // nineteen more numbers indistinguishable from clean ones. This loop logged it as a per-repository
+      // failure once, on tailwindcss, and carried on — which was wrong even though that particular trip
+      // turned out to be a property of the data (see `recordContainsRawDiff`) rather than a defect here.
+      // That case no longer reaches this handler at all; anything that does is a real leak.
+      if (e instanceof LeakageError) throw e;
       const why = e instanceof Error ? e.message.split('\n')[0] : String(e);
       log(`  FAILED — ${why}`);
       rows.push({ repo: name, spec: spec.spec, status: 'failed', reason: why });

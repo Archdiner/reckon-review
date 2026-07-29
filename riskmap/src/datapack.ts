@@ -294,25 +294,38 @@ export function buildDataPack(opts: DataPackOpts): DataPackResult {
   } else missing.push(unit);
 
   // ── 4. REGION LEVEL, POOLED ACROSS EVERY RECORD MAP ON DISK ──────────────────────────────
-  const maps: RecordMap[] = loadSweepMaps(opts.sweepDir);
-  const seen = new Set(maps.map((m) => `${m.repo}@${m.headSha}`));
+  //
+  // TWO MAPS OF THE SAME COMMIT ARE NOT DUPLICATES, and the first version of this dedupe treated them
+  // as such. The sweep measures a repository's 20 largest areas at full depth; the standalone run
+  // measured all 64 of grafana's. Both ran against the same clone, so both carry the same head SHA, and
+  // keying on repo+SHA silently discarded the deeper measurement in favour of the shallower one. The
+  // key includes the area count, and every row carries a `source` column so the two are separable
+  // rather than merely both present — pooling a 20-area slice with a 64-area census would double-count
+  // the areas they share.
+  const tagged: { map: RecordMap; source: string }[] = loadSweepMaps(opts.sweepDir).map((map) => ({
+    map,
+    source: 'sweep',
+  }));
+  const seen = new Set(tagged.map((t) => `${t.map.repo}@${t.map.headSha}@${t.map.cells.length}`));
   for (const p of opts.extraRecordMaps) {
     if (!existsSync(p)) {
       missing.push(p);
       continue;
     }
     const m = JSON.parse(readFileSync(p, 'utf8')) as RecordMap;
-    if (!seen.has(`${m.repo}@${m.headSha}`)) {
-      maps.push(m);
-      seen.add(`${m.repo}@${m.headSha}`);
+    const key = `${m.repo}@${m.headSha}@${m.cells.length}`;
+    if (!seen.has(key)) {
+      tagged.push({ map: m, source: 'full-depth' });
+      seen.add(key);
     }
   }
 
   const regionRows: Cell[][] = [];
   const repoRows: Cell[][] = [];
-  for (const m of maps) {
+  for (const { map: m, source } of tagged) {
     repoRows.push([
       m.repo,
+      source,
       m.headSha,
       new Date(m.asOf).toISOString().slice(0, 10),
       m.refused,
@@ -330,6 +343,7 @@ export function buildDataPack(opts: DataPackOpts): DataPackResult {
     for (const c of m.cells) {
       regionRows.push([
         m.repo,
+        source,
         c.path,
         c.weight,
         c.coverage,
@@ -350,6 +364,7 @@ export function buildDataPack(opts: DataPackOpts): DataPackResult {
     'repositories.csv',
     [
       'repo',
+      'source',
       'head_sha',
       'as_of',
       'refused',
@@ -366,12 +381,16 @@ export function buildDataPack(opts: DataPackOpts): DataPackResult {
     ],
     repoRows,
     'one row per repository record map. `coverage` is the question-weighted share explicit across ' +
-      'its scored areas. `areas_not_scored` is areas that exist but fell outside the sampling cap.'
+      'its scored areas. `areas_not_scored` is areas that exist but fell outside the sampling cap. ' +
+      '`source` is `sweep` (the largest areas of many repositories) or `full-depth` (every area of one). ' +
+      'FILTER ON IT: the same repository can appear under both, measured over different area sets, and ' +
+      'pooling them would double-count the areas they share.'
   );
   write(
     'areas.csv',
     [
       'repo',
+      'source',
       'area',
       'lines_changed',
       'coverage',
@@ -387,7 +406,8 @@ export function buildDataPack(opts: DataPackOpts): DataPackResult {
       'usable',
     ],
     regionRows,
-    'one row per directory area per repository. `usable` is false when the estimate is too thin to ' +
+    'one row per directory area per repository per `source` — see repositories.csv for what `source` ' +
+      'means and why it must be filtered on. `usable` is false when the estimate is too thin to ' +
       'colour — below the scored-commit floor or a wider interval than the rule allows — and those ' +
       'rows should be plotted as uncertain rather than dropped or trusted.'
   );
