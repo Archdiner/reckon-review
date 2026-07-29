@@ -226,3 +226,77 @@ if (failures > 0) {
   console.log(`${failures} test(s) failed after the appended blocks`);
   process.exit(1);
 }
+
+// ── THE DEPTH CALCULATION ────────────────────────────────────────────────────────────────────
+//
+// It converts a measured within-repository spread into a sampling budget, and it is the number that
+// says whether an area-level ordering is readable at all. The arithmetic is small enough to check by
+// hand, which is exactly why it should be: a plausible-looking budget nobody verified would set the
+// depth for every future run.
+console.log('\nthe depth calculation is the stated criterion and nothing else');
+{
+  const { varianceSplit } = await import('./recordsweep.js');
+  const mk = (repo: string, values: number[], questions: number): unknown => ({
+    repo,
+    headSha: 'x',
+    asOf: 0,
+    windowMonths: 24,
+    recentMonths: 1,
+    commitsAnalysed: 100,
+    squash: { availability: 'available', substantiveBodyShare: 0.5, sampled: 200, note: '' },
+    refused: false,
+    cells: values.map((v, i) => ({
+      path: `a${i}`,
+      weight: 100,
+      coverage: v,
+      ciLo: 0,
+      ciHi: 1,
+      ciHalfWidth: 0.1,
+      scoredCommits: 10,
+      questions,
+      active: true,
+      percentile: null,
+      greyReason: null,
+    })),
+    overall: { explicit: 1, total: questions * values.length, rate: 0.5 },
+    calibration: null,
+    generatedAtUtc: '',
+  });
+
+  // Huge samples, so sampling noise is negligible and the corrected within variance is the raw one.
+  const s = varianceSplit([mk('a/a', [0.4, 0.6], 100000), mk('b/b', [0.4, 0.6], 100000)] as never)!;
+  const withinSd = Math.sqrt(s.withinVarCorrected);
+  const expected = Math.ceil((s.meanCoverage * (1 - s.meanCoverage)) / (withinSd / 2) ** 2);
+  ok(
+    `questions needed matches p(1-p)/(sd/2)^2 = ${expected}`,
+    s.questionsNeededPerArea === expected,
+    `got ${s.questionsNeededPerArea}`
+  );
+  ok(
+    'commits needed is questions needed over observed questions per commit',
+    s.commitsNeededPerArea === Math.ceil(expected / s.questionsPerCommit),
+    `${s.commitsNeededPerArea} vs ${Math.ceil(expected / s.questionsPerCommit)}`
+  );
+  ok('questions per commit is observed, not assumed', Math.abs(s.questionsPerCommit - 100000 / 10) < 1e-9);
+  ok('median questions per area is reported', s.questionsPerArea === 100000);
+
+  // Wider true spread is easier to resolve, so it must need FEWER questions, not more.
+  const wide = varianceSplit([mk('a/a', [0.1, 0.9], 100000), mk('b/b', [0.1, 0.9], 100000)] as never)!;
+  ok(
+    'a wider spread needs less depth to resolve',
+    (wide.questionsNeededPerArea ?? Infinity) < (s.questionsNeededPerArea ?? 0),
+    `${wide.questionsNeededPerArea} vs ${s.questionsNeededPerArea}`
+  );
+
+  // No within-repository signal at all: no depth resolves it, and the field says so rather than
+  // printing a huge number that looks like an achievable target.
+  const flat = varianceSplit([mk('a/a', [0.5, 0.5], 100000), mk('b/b', [0.2, 0.2], 100000)] as never)!;
+  ok('zero within-repository spread yields null, not an enormous budget', flat.questionsNeededPerArea === null);
+  ok('and the commit budget is null with it', flat.commitsNeededPerArea === null);
+}
+
+console.log('');
+if (failures > 0) {
+  console.log(`${failures} test(s) failed after the depth block`);
+  process.exit(1);
+}

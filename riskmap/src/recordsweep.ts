@@ -327,6 +327,26 @@ export interface VarianceSplit {
   /** Share of true variance sitting between repositories, in [0,1]. */
   iccCorrected: number;
   iccRaw: number;
+  /** Mean coverage over the cells, for the depth calculation. */
+  meanCoverage: number;
+  /** Mean questions per scored commit, observed. Converts a question budget into a commit budget. */
+  questionsPerCommit: number;
+  /** Median questions currently asked per area. */
+  questionsPerArea: number;
+  /**
+   * HOW DEEP SAMPLING WOULD HAVE TO GO for area-to-area differences inside one repository to be
+   * resolvable — questions per area, and the commits that implies.
+   *
+   * The criterion is that an area's sampling standard error should be at most HALF the true
+   * within-repository standard deviation. Below that ratio the noise dominates the signal and a
+   * heatmap is drawing sampling error; at that ratio the ordering of areas starts to mean something.
+   * It is a convention, stated so it can be argued with, not a significance test.
+   *
+   * Null when the corrected within-repository variance is zero — there is then no signal to resolve
+   * and no depth would help.
+   */
+  questionsNeededPerArea: number | null;
+  commitsNeededPerArea: number | null;
 }
 
 export function varianceSplit(maps: RecordMap[]): VarianceSplit | null {
@@ -363,6 +383,29 @@ export function varianceSplit(maps: RecordMap[]): VarianceSplit | null {
     groups.flatMap((g) => g.samplingVars).reduce((a, b) => a + b, 0) / all.length;
   const withinCorrected = Math.max(0, within - meanSamplingVar);
 
+  // Observed questions per commit and per area, so a question budget can be quoted as a commit budget.
+  let qTotal = 0;
+  let cTotal = 0;
+  const perArea: number[] = [];
+  for (const m of maps) {
+    if (m.refused) continue;
+    for (const c of m.cells) {
+      if (c.greyReason !== null || c.coverage === null) continue;
+      qTotal += c.questions;
+      cTotal += c.scoredCommits;
+      perArea.push(c.questions);
+    }
+  }
+  perArea.sort((a, b) => a - b);
+  const questionsPerCommit = cTotal > 0 ? qTotal / cTotal : 0;
+  const questionsPerArea = perArea.length > 0 ? perArea[Math.floor(perArea.length / 2)]! : 0;
+
+  // Depth needed for the sampling SE of an area to fall to half the true within-repository SD.
+  const withinSd = Math.sqrt(withinCorrected);
+  const targetSe = withinSd / 2;
+  const questionsNeeded =
+    targetSe > 0 ? Math.ceil((grand * (1 - grand)) / (targetSe * targetSe)) : null;
+
   return {
     repos: groups.length,
     cells: all.length,
@@ -372,6 +415,14 @@ export function varianceSplit(maps: RecordMap[]): VarianceSplit | null {
     meanSamplingVar,
     iccCorrected: between + withinCorrected > 0 ? between / (between + withinCorrected) : 0,
     iccRaw: between + within > 0 ? between / (between + within) : 0,
+    meanCoverage: grand,
+    questionsPerCommit,
+    questionsPerArea,
+    questionsNeededPerArea: questionsNeeded,
+    commitsNeededPerArea:
+      questionsNeeded !== null && questionsPerCommit > 0
+        ? Math.ceil(questionsNeeded / questionsPerCommit)
+        : null,
   };
 }
 
@@ -454,6 +505,33 @@ export function formatRecordSweepReport(rows: RecordSweepRow[], maps: RecordMap[
         'thin to colour has no business in a variance decomposition.'
     );
     L.push('');
+    if (split.questionsNeededPerArea !== null && split.commitsNeededPerArea !== null) {
+      L.push('### What depth would make area-to-area differences readable');
+      L.push('');
+      L.push(
+        `True within-repository spread is ${(Math.sqrt(split.withinVarCorrected) * 100).toFixed(1)} points ` +
+          `of standard deviation. For an area's own sampling error to fall to half of that — the point at ` +
+          `which the ordering of areas starts to carry signal rather than noise — an area needs about ` +
+          `**${split.questionsNeededPerArea} questions**, which at the observed ` +
+          `${split.questionsPerCommit.toFixed(1)} questions per commit is about ` +
+          `**${split.commitsNeededPerArea} commits per area**.`
+      );
+      L.push('');
+      L.push(
+        `This sweep sampled a median of ${split.questionsPerArea} questions per area, so the depth ratio is ` +
+          `roughly ${(split.questionsNeededPerArea / Math.max(1, split.questionsPerArea)).toFixed(1)}x. ` +
+          'The half-an-SD criterion is a stated convention rather than a test, and it is the number to ' +
+          'argue with if you disagree with the conclusion.'
+      );
+      L.push('');
+      L.push(
+        'The consequence is a budget statement, not a defect: at the current depth the REPOSITORY is the ' +
+          'unit this measurement resolves, and a per-area page is drawing a mixture of signal and sampling ' +
+          'error. Spending the same budget on fewer, larger units is the change that would make an ' +
+          'area-level ordering trustworthy — not a better decomposition of the same spend.'
+      );
+      L.push('');
+    }
   }
 
   if (refused.length > 0) {
