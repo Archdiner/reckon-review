@@ -34,6 +34,9 @@ import { exportQuestionWorksheet, scoreAgainstHumanQuestions } from './humanques
 import { buildChart } from './chart.js';
 import { formatLengthSizeReport } from './lengthsize.js';
 import { analyze, writeCsvs, formatReport } from './stage6_analyze.js';
+import {
+  buildVariants, scoreVariants, loadVariantRows, summarise, variantCsv, clusterBootstrapCi,
+} from './unitmismatch.js';
 import { exportWorksheet, compareLabels } from './handlabel.js';
 import { describeCorpus } from './describe.js';
 import { backendFor, selfJudgementWarning } from './backends.js';

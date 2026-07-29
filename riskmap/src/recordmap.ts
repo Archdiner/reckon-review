@@ -155,7 +155,11 @@ export interface BuildRecordMapOpts {
 export async function buildRecordMap(opts: BuildRecordMapOpts): Promise<RecordMap> {
   const log = opts.onProgress ?? (() => {});
   const windowMonths = opts.windowMonths ?? DEFAULT_THRESHOLDS.windowMonths;
-  const recentMonths = opts.recentMonths ?? 3;
+  // ONE MONTH, NOT THREE. At three months on an active repository the recency flag fired on 63
+  // of 63 measured areas — texture with no information, competing with the data for attention.
+  // The renderers additionally suppress the marker when it is near-universal, because no fixed
+  // window is informative on every repository.
+  const recentMonths = opts.recentMonths ?? 1;
 
   const head = await readHead(opts.repo);
   const repo = await readRepoName(opts.repo);
