@@ -48,6 +48,12 @@ export function toCsv(header: string[], rows: Cell[][]): string {
  * questions, which is prose with commas and quotes in it, and it is the most interesting file in the
  * study. Splitting it on commas would have shifted every column after the first rationale and
  * produced numbers that looked fine.
+ *
+ * ONE LIMITATION, and it is inherent rather than an oversight: a record consisting of a single empty
+ * field serialises to an empty line, which is indistinguishable from a blank separator line. RFC 4180
+ * does not resolve that and no reader can. Blank lines are dropped, which is the standard treatment
+ * and costs nothing here because no file in the pack is single-column. A row whose fields are ALL
+ * empty in a multi-column file is kept, which is the case that would actually lose data.
  */
 export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
