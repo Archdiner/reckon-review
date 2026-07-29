@@ -84,6 +84,29 @@ async function scoreOne(backend: LlmBackend, question: string, record: string): 
   return m ? Number(m[0]) : 0;
 }
 
+/**
+ * Bounded-concurrency map, preserving input order in the output.
+ *
+ * Coverage was fully sequential — one region at a time, one commit at a time, one question at a
+ * time — which put a 68-region repository at roughly eight hours for the sample size the
+ * uncertainty rule actually requires. Every one of those calls is network-bound and independent,
+ * so the wall clock was almost entirely idle waiting. Ordering is preserved because the seeded
+ * sample must produce identical output whatever order the responses arrive in.
+ */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i]!, i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 /** Deterministic shuffle, so a rerun on the same clone scores the same commits. */
 function seededPick<T>(items: T[], n: number, seed: string): T[] {
   let h = 2166136261;
@@ -107,6 +130,8 @@ export interface CoverageOpts {
   perRegion: number;
   /** Commits larger than this are skipped: the diff would blow the digest budget. */
   maxFilesPerCommit: number;
+  /** Parallel in-flight model calls. Network-bound, so this is nearly linear. */
+  concurrency?: number;
   onProgress?: (msg: string) => void;
 }
 
@@ -158,6 +183,8 @@ export async function computeCoverage(
   const detail = new Map<string, RegionCoverage>();
   let questionsAsked = 0;
 
+  const conc = Math.max(1, opts.concurrency ?? 8);
+
   for (const [region, commits] of regionsOf) {
     const candidates = commits.filter(
       (c) =>
@@ -170,34 +197,32 @@ export async function computeCoverage(
     }
 
     const sample = seededPick(candidates, opts.perRegion, region);
-    let explicit = 0;
-    let total = 0;
-    let usedCommits = 0;
 
-    for (const c of sample) {
+    // One task per sampled commit, run with bounded concurrency. Each returns its own tallies
+    // rather than mutating shared counters, so the result does not depend on completion order —
+    // a seeded sample has to produce the same numbers whatever order the network replies in.
+    const perCommit = await mapLimit(sample, conc, async (c) => {
       let diff: string;
       try {
         diff = await readCommitDiff(opts.repo, c.sha);
       } catch {
-        continue;
+        return null;
       }
-      if (!diff.trim()) continue;
+      if (!diff.trim()) return null;
 
       const record = `${c.subject}\n\n${c.body}`.trim();
 
-      // Same digest the product uses, so every changed file is represented rather than the
-      // first few thousand characters. Without it, questions about a wide commit come from its
-      // opening files and systematically miss the tail, which would depress coverage for
-      // reasons that have nothing to do with how the author wrote.
-      // Guard the INPUT. The earlier version only inspected decompose's OUTPUT, after the call
-      // had already been made — so a leak into the generator prompt was unobservable by the
-      // thing whose error message claimed to be checking exactly that.
-      // The vendored assertion reads the diff from a directory, so the commit's diff is staged
-      // where it can find it. Cheap next to the model call it guards.
+      // Same digest the product uses, so every changed file is represented rather than the first
+      // few thousand characters. Guard the INPUT: an earlier version inspected decompose's OUTPUT
+      // after the call had already been made, so a leak into the generator prompt was invisible to
+      // the very check whose error message claimed to be testing for it.
       const digest = diffDigest(diff);
-      mkdirSync(guardDir, { recursive: true });
-      writeFileSync(join(guardDir, 'diff.patch'), diff);
-      assertDerivedFromDiff(guardDir, digest, `coverage/${c.sha.slice(0, 8)}`);
+      // Per-commit staging dir, because the vendored assertion reads the diff from a directory and
+      // concurrent commits must not overwrite each other's diff.patch.
+      const dir = join(guardDir, c.sha.slice(0, 12));
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'diff.patch'), diff);
+      assertDerivedFromDiff(dir, digest, `coverage/${c.sha.slice(0, 8)}`);
 
       let questions: { question: string }[];
       try {
@@ -205,18 +230,24 @@ export async function computeCoverage(
         questions = out.ok ? out.decisions : [];
       } catch (e) {
         if (e instanceof LeakageError) throw e;
-        continue;
+        return null;
       }
-      if (questions.length === 0) continue;
+      if (questions.length === 0) return null;
 
+      const scores = await mapLimit(questions, conc, (q) => scoreOne(opts.backend, q.question, record));
+      return { total: scores.length, explicit: scores.filter((x) => x === 2).length };
+    });
+
+    let explicit = 0;
+    let total = 0;
+    let usedCommits = 0;
+    for (const r of perCommit) {
+      if (!r) continue;
       usedCommits++;
-      for (const q of questions) {
-        const s = await scoreOne(opts.backend, q.question, record);
-        total++;
-        questionsAsked++;
-        if (s === 2) explicit++;
-      }
+      total += r.total;
+      explicit += r.explicit;
     }
+    questionsAsked += total;
 
     if (usedCommits < MIN_COMMITS_FOR_COVERAGE || total === 0) {
       opts.onProgress?.(`${region}: only ${usedCommits} commits produced questions — no coverage reported`);

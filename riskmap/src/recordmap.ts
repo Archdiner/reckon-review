@@ -146,6 +146,7 @@ export interface BuildRecordMapOpts {
   /** Sub-window defining "active". Carried by the border. */
   recentMonths?: number;
   perRegion?: number;
+  concurrency?: number;
   backend: LlmBackend;
   genBackend: LlmBackend;
   onProgress?: (m: string) => void;
@@ -237,6 +238,7 @@ export async function buildRecordMap(opts: BuildRecordMapOpts): Promise<RecordMa
     backend: opts.backend,
     genBackend: opts.genBackend,
     perRegion: opts.perRegion ?? DEFAULT_PER_REGION,
+    ...(opts.concurrency ? { concurrency: opts.concurrency } : {}),
     maxFilesPerCommit: DEFAULT_THRESHOLDS.maxFilesPerCommit,
     onProgress: log,
   });
@@ -290,4 +292,144 @@ export async function buildRecordMap(opts: BuildRecordMapOpts): Promise<RecordMa
         : null,
     calibration: cal ? { corpus: cal.corpus, n: cal.n, shareAtZero: cal.shareAtZero } : null,
   };
+}
+
+
+/**
+ * The page. One file, no scripts, no external references, openable from an email attachment.
+ *
+ * When the gate refused there is no treemap — the page says why in plain language instead of
+ * drawing something the reader cannot check. That is the whole point of the refusal: a heatmap
+ * of an unmeasurable repository is not a caveated map, it is a false one.
+ */
+export function renderRecordMapPage(map: RecordMap, svg: string): string {
+  const esc = (t: string) =>
+    t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
+  const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  const coloured = map.cells.filter((c) => c.greyReason === null);
+  const greyed = map.cells.length - coloured.length;
+
+  const style = `
+  :root { --bg:#fff; --fg:#16181d; --muted:#5c6270; --line:#e3e6ea; --card:#fafbfc; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14161a; --fg:#e8eaed; --muted:#9aa1ad; --line:#2a2e36; --card:#191c22; }
+  }
+  * { box-sizing:border-box }
+  body { margin:0; padding:2.5rem 1.25rem 4rem; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif }
+  main { max-width:64rem; margin:0 auto }
+  h1 { font-size:1.5rem; margin:0 0 .35rem; letter-spacing:-.01em }
+  .meta { color:var(--muted); font-size:.85rem; margin:0 0 1.5rem }
+  .lede { font-size:1.05rem; max-width:44rem; margin:0 0 1.5rem }
+  .big { font-size:1.6rem; font-weight:700 }
+  .refusal { background:var(--card); border:1px solid var(--line); border-left:3px solid #8a1c1c;
+             padding:1rem 1.1rem; border-radius:3px; margin:0 0 1.5rem }
+  .chart { overflow-x:auto; margin:0 0 1.25rem }
+  footer { margin-top:2.5rem; padding-top:1.25rem; border-top:1px solid var(--line);
+           color:var(--muted); font-size:.82rem }
+  footer h2 { font-size:.75rem; text-transform:uppercase; letter-spacing:.05em; margin:1.4rem 0 .45rem }
+  footer ul { margin:.4rem 0; padding-left:1.1rem } footer li { margin:.25rem 0 }
+  table { border-collapse:collapse; font-size:.82rem; margin:.5rem 0 }
+  th,td { text-align:right; padding:.25rem .6rem; border-top:1px solid var(--line) }
+  th:first-child,td:first-child { text-align:left }
+  code { background:var(--line); padding:.05rem .25rem; border-radius:2px; font-size:.9em }`;
+
+  if (map.refused) {
+    return `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Record map — ${esc(map.repo)} — not measurable</title><style>${style}</style>
+<main>
+  <h1>This repository's commit history cannot be measured this way</h1>
+  <p class="meta"><strong>${esc(map.repo)}</strong> · <code>${esc(map.headSha.slice(0, 10))}</code> ·
+     ${map.commitsAnalysed.toLocaleString('en-US')} commits examined · ${day(map.generatedAtUtc ? Date.parse(map.generatedAtUtc) : map.asOf)}</p>
+  <div class="refusal">
+    <p><strong>No map is drawn, deliberately.</strong> ${esc(map.squash.note)}</p>
+    <p>A heatmap of this repository would be uniformly alarming, and that colour would be
+       measuring the merge configuration rather than anything its authors did or did not write.
+       An unmeasurable dimension can be a dash in a table; on a map, colour <em>is</em> the
+       message, so the honest output is no map.</p>
+  </div>
+  <footer>
+    <h2>What was tested</h2>
+    <p>${(map.squash.substantiveBodyShare * 100).toFixed(1)}% of the last ${map.squash.sampled}
+       commits carry a body beyond their subject line. The floor is 10%. The threshold comes from a
+       study of 1,000 merged pull requests which rejected three repositories on the same test.</p>
+    <p>This check runs before any model call, so nothing was spent producing a map that could not
+       be trusted.</p>
+  </footer>
+</main>`;
+  }
+
+  const worst = [...coloured].sort((a, b) => (a.coverage ?? 1) - (b.coverage ?? 1)).slice(0, 5);
+  return `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Record map — ${esc(map.repo)}</title><style>${style}</style>
+<main>
+  <h1>How much of this codebase's change its commit history explains</h1>
+  <p class="meta"><strong>${esc(map.repo)}</strong> · <code>${esc(map.headSha.slice(0, 10))}</code> ·
+     ${map.windowMonths}-month window ending ${day(map.asOf)} ·
+     ${map.commitsAnalysed.toLocaleString('en-US')} commits · ${map.cells.length} regions</p>
+  ${
+    map.overall
+      ? `<p class="lede">Across the regions that could be measured, the commit records explain
+         <span class="big">${pct(map.overall.rate)}</span> of what changed —
+         ${map.overall.explicit.toLocaleString('en-US')} of
+         ${map.overall.total.toLocaleString('en-US')} mechanism questions answered outright.</p>`
+      : ''
+  }
+  <div class="chart">${svg}</div>
+  ${
+    worst.length
+      ? `<h2 style="font-size:.95rem;margin:1.5rem 0 .4rem">Least explained, of the regions with a usable estimate</h2>
+         <table><thead><tr><th>Region</th><th>Explained</th><th>95% interval</th><th>Questions</th></tr></thead><tbody>
+         ${worst
+           .map(
+             (c) =>
+               `<tr><td><code>${esc(c.path)}</code></td><td>${pct(c.coverage!)}</td><td>${pct(c.ciLo!)} – ${pct(c.ciHi!)}</td><td>${c.questions}</td></tr>`
+           )
+           .join('')}
+         </tbody></table>`
+      : ''
+  }
+  <footer>
+    <h2>How to read this</h2>
+    <ul>
+      <li><strong>Size</strong> is lines changed in the window — how much change the record had to explain.</li>
+      <li><strong>Colour</strong> is the share of mechanism questions about those changes that the
+        commit messages answer outright. It is an absolute share, not a rank.</li>
+      <li><strong>A border</strong> marks a region changed in the last ${map.recentMonths} months.</li>
+      <li><strong>Hatched grey</strong> means the estimate is too thin to colour — fewer than
+        ${MIN_SCORED_COMMITS} scorable commits, or a 95% interval wider than
+        ±${(MAX_CI_HALF_WIDTH * 100).toFixed(0)} points. ${greyed} of ${map.cells.length} regions here.
+        A map that coloured those would be inventing confidence it has not earned.</li>
+    </ul>
+    <h2>What this is not</h2>
+    <p>This is a map of <strong>what the record explains</strong>. It is not a map of what anyone
+       understands, and the difference is the point: a written record cannot be evidence that a
+       person understood a change, which is the central finding of the study behind this
+       measurement. It contains no information about individuals — no authorship, no ownership, no
+       activity — and none was collected.</p>
+    <h2>Method</h2>
+    <p>For a seeded sample of up to ${DEFAULT_PER_REGION} commits per region, mechanism questions
+       are generated <em>from the diff alone</em> by the same generator the product ships, then the
+       commit message is scored against them by a second model that never sees the code. A tripped
+       separation guard aborts the run rather than warning.</p>
+    <p>Body density here is ${(map.squash.substantiveBodyShare * 100).toFixed(1)}% of the last
+       ${map.squash.sampled} commits, above the 10% floor below which no map is drawn.</p>
+    ${
+      map.calibration
+        ? `<h2>Calibration</h2>
+           <p>For context rather than for colour: against ${map.calibration.n.toLocaleString('en-US')}
+              merged pull requests from five large open-source projects,
+              ${(map.calibration.shareAtZero * 100).toFixed(1)}% of which explain nothing at all.
+              Percentiles against that corpus are in the JSON alongside this page.</p>
+           <p><strong>One known bias.</strong> That corpus scores pull-request records — description
+              plus commit messages — while this scores commit messages only, because a clone is the
+              whole input and descriptions are not in one. Commit-only is a subset, so every cell
+              here reads lower than the corpus comparison implies. The magnitude is being measured
+              separately; until it is, treat the colours as comparable to each other and not to the
+              corpus.</p>`
+        : ''
+    }
+  </footer>
+</main>`;
 }

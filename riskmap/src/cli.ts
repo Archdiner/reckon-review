@@ -5,6 +5,7 @@
  *   riskmap sweep --repos F      run the map across many repositories and report the hit rate.
  *   riskmap validate <clone>     the retrospective test: does a flag predict anything?
  *   riskmap regress <clone>      the same test on the dimensions, continuously, with real n.
+ *   riskmap recordmap <clone>    the treemap: coverage only, no person data, gate-refused if unmeasurable.
  *   riskmap calibrate            rebuild the calibration distribution from the study results.
  *
  * `map` is deliberately usable with no keys, no config and no network. The build spec is
@@ -21,6 +22,8 @@ import { buildMap } from './build.js';
 import { renderHtml } from './render.js';
 import { runValidation, formatValidationReport } from './validate.js';
 import { runRegression, formatRegressionReport } from './regress.js';
+import { buildRecordMap, renderRecordMapPage, DEFAULT_PER_REGION } from './recordmap.js';
+import { renderTreemapSvg, type TreemapCell } from './treemap.js';
 import { runSweep, sweepWorker, DiskSpaceError } from './sweep.js';
 import { runGate, formatGateReport } from './gate.js';
 import { AnthropicBackend, OpenAiBackend } from './vendor/backends.js';
