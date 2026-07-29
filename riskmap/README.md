@@ -31,11 +31,21 @@
 > the retired part. They are kept rather than deleted because a measured refutation is a result, and
 > deleting it would leave the next person to rediscover it at the same cost.
 >
-> **The one loose end, stated plainly.** Record coverage as a *predictor of future outcomes* was
-> untested when the ownership dimensions were refuted (n=0 — the validation builder did not score
-> coverage at the cutoff). `regress --coverage` now does, so that row is being filled in. Coverage
-> as a *measurement* does not depend on it: the record map describes what is written down today,
-> which is checkable by reading the commits.
+> **The loose end is now closed, and it closed the same way.** Record coverage as a *predictor of
+> future outcomes* was untested when the ownership dimensions were refuted (n=0 — the validation
+> builder did not score coverage at the cutoff). `regress --coverage` scored it on **223 of 224**
+> analysis regions across four repositories, and it predicts nothing in the claimed direction: no
+> association with dormancy, replacement, post-cutoff contributors, fix rate or rework rate — and two
+> outcomes come back the WRONG way with intervals excluding zero. Better-covered areas were rewritten
+> *more* (+0.098 per SD, 95% CI [0.038, 0.160], churn-adjusted) and turned over more of their files
+> (+0.096 [0.038, 0.155]). So **all four dimensions are now tested and none of them forecasts anything
+> measurable in git.**
+>
+> **That is a result about prediction, not about measurement, and the distinction is the point.** What
+> a record says is checkable by reading it, and the record map reports exactly that. Whether a written
+> record forecasts what happens to a directory a year later is a separate claim; it was worth testing
+> precisely because it is the claim a heatmap invites a reader to make; and it does not hold. Nothing
+> in the record map asserts it, and nothing should be built that does.
 
 A one-page artifact you can generate for any repository from a clone alone. No install, no app
 permissions, no behaviour change from anyone on the team.

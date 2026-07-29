@@ -1334,7 +1334,7 @@ export function renderPoster(d: PosterData, opts: PosterOpts = {}): string {
   y += Math.max(len.height, reg.height, rowH) + 46;
 
   // ── FOOTER ───────────────────────────────────────────────────────────────────────────────
-  const footH = 118;
+  const footH = 148;
   body.push(rect(0, y, W, footH, NAVY_DEEP));
   const fy = y + 34;
   body.push(
@@ -1353,22 +1353,39 @@ export function renderPoster(d: PosterData, opts: PosterOpts = {}): string {
       'foot'
     )
   );
+  // THE LINE THAT STOPS A READER SUPPLYING A CLAIM THE POSTER DOES NOT MAKE.
+  //
+  // Every panel here measures what a record SAYS. A heatmap invites the next inference — that the dark
+  // areas are the ones that will hurt you later — and that inference was tested on 223 regions across
+  // four repositories at an 18-month cutoff. It does not hold: no association with dormancy, rewriting
+  // in the predicted direction, contributors, or defects, and two outcomes came back the wrong way with
+  // intervals excluding zero. Printing that on the artifact costs a line and buys the only thing that
+  // matters when a sharp reader gets to the tenth comment.
   body.push(
     text(
       M,
       fy + 48,
+      'This measures what the record says, not what will break. Whether coverage forecasts a directory\u2019s ' +
+        'future was tested on 223 areas across four repositories: it does not, in either direction.',
+      'foot'
+    )
+  );
+  body.push(
+    text(
+      M,
+      fy + 72,
       opts.source ??
         'Source: study/results/three-arm-scores.csv, unit-mismatch-scores.csv, and the record map JSON. Every number here is computed from those files at render time.',
       'footDim'
     )
   );
   if (d.missing.length > 0) {
-    body.push(text(M, fy + 70, `Omitted for want of data: ${d.missing.join(', ')}`, 'footDim'));
+    body.push(text(M, fy + 94, `Omitted for want of data: ${d.missing.join(', ')}`, 'footDim'));
   }
   if (opts.stamp) body.push(text(W - M, fy, opts.stamp, 'footDim', ' text-anchor="end"'));
   // The wordmark: "reckon" in ice, "review" in the teal that carries it on the site.
   body.push(
-    `<text x="${f(W - M)}" y="${f(fy + 46)}" text-anchor="end"><tspan class="markA">reckon</tspan><tspan class="markB">review</tspan><tspan class="markC">  ·  reckonreview.dev</tspan></text>`
+    `<text x="${f(W - M)}" y="${f(fy + 70)}" text-anchor="end"><tspan class="markA">reckon</tspan><tspan class="markB">review</tspan><tspan class="markC">  ·  reckonreview.dev</tspan></text>`
   );
 
   const H = y + footH;

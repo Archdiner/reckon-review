@@ -183,6 +183,9 @@ console.log('\nthe poster never names a person and never overclaims');
   ok('states that vertical position is meaningless where it is', /means nothing|carries no meaning/i.test(svg));
   ok('carries a drawn legend, not a described one', svg.includes('nothing') && svg.includes('all of it'));
   ok('the separation guard is stated', /never sees the code/i.test(svg));
+  // The predictive claim a heatmap invites was tested and failed, so the poster has to disown it.
+  ok('disowns the predictive claim', /not what will break/i.test(svg));
+  ok('and says where that was tested', /223 areas across four repositories/.test(svg));
 }
 
 console.log('\nthe repository matrix draws every row and hides nothing');

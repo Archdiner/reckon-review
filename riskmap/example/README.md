@@ -45,6 +45,13 @@ commits in the following year far more often than unflagged ones. That is near-t
 flags regions whose contributors stopped committing, and they then get no commits — and it is not the
 claim any outreach would want to make.
 
-One dimension is absent from that refutation rather than cleared by it: **record coverage**, which
-needs a model to score and so was n=0 in that run. `regress --coverage` scores it as of the cutoff,
-which is the run now being filled in.
+One dimension was absent from that refutation rather than cleared by it: **record coverage**, which
+needs a model to score and so was n=0 in that run. It has since been scored as of the cutoff on 223 of
+224 analysis regions, and it lands in the same place — no association with any outcome in the claimed
+direction, and two outcomes (wholesale rewrite, file turnover) coming back the *wrong* way with
+intervals excluding zero. All four dimensions are now tested; none forecasts anything measurable in
+git.
+
+That is a statement about **prediction**. Coverage as a **measurement** — what the commits actually
+explain, which a reader can check by reading them — is what `grafana-record-map.html` and
+`record-poster.svg` report, and it does not depend on the predictive claim.
