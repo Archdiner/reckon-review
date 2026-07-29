@@ -22,13 +22,13 @@ one row per mechanism question. Scores are the 0/1/2 rubric: 2 = answered explic
 
 a SEPARATE 250-pull-request draw, each record scored twice: whole record, then subject line alone. Not comparable to absolute numbers from the 1,000-PR corpus; the within-row difference is.
 
-### `repositories.csv` — 1 rows
+### `repositories.csv` — 14 rows
 
-one row per repository record map. `coverage` is the question-weighted share explicit across its scored areas. `areas_not_scored` is areas that exist but fell outside the sampling cap.
+one row per repository record map. `coverage` is the question-weighted share explicit across its scored areas. `areas_not_scored` is areas that exist but fell outside the sampling cap. `source` is `sweep` (the largest areas of many repositories) or `full-depth` (every area of one). FILTER ON IT: the same repository can appear under both, measured over different area sets, and pooling them would double-count the areas they share.
 
-### `areas.csv` — 64 rows
+### `areas.csv` — 324 rows
 
-one row per directory area per repository. `usable` is false when the estimate is too thin to colour — below the scored-commit floor or a wider interval than the rule allows — and those rows should be plotted as uncertain rather than dropped or trusted.
+one row per directory area per repository per `source` — see repositories.csv for what `source` means and why it must be filtered on. `usable` is false when the estimate is too thin to colour — below the scored-commit floor or a wider interval than the rule allows — and those rows should be plotted as uncertain rather than dropped or trusted.
 
 ### `gate.csv` — 24 rows
 

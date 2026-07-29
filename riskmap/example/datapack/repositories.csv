@@ -1,2 +1,15 @@
-repo,head_sha,as_of,refused,gate_verdict,body_density,commits_in_window,window_months,coverage,questions_explicit,questions_total,areas_scored,areas_not_scored,areas_usable
-grafana/grafana,3c66fe6f38ed4beda1cbb528c9766e0108067442,2026-07-29,false,available,0.525,18545,24,0.2514500170590242,737,2931,64,,61
+repo,source,head_sha,as_of,refused,gate_verdict,body_density,commits_in_window,window_months,coverage,questions_explicit,questions_total,areas_scored,areas_not_scored,areas_usable
+apache/airflow,sweep,d8074062e6e32f20ca2ceebbfab8de7e52784163,2026-07-29,false,available,0.58,14622,24,0.3841991341991342,355,924,20,39,20
+appwrite/appwrite,sweep,2bd1442d33f8c6998df1917119438b15aee017cc,2026-07-29,false,available,0.57,9931,24,0.5158469945355191,472,915,20,49,19
+calcom/cal.com,sweep,3894f37e14eae5082770f35ff1fde72110c0e6b6,2026-07-22,false,available,0.565,6243,24,0.2246740220661986,224,997,20,31,20
+denoland/deno,sweep,3ee245fe9da563cacb0b6458c4280b5a2758782c,2026-07-29,false,available,0.61,5330,24,0.3977272727272727,385,968,20,49,20
+directus/directus,sweep,3b057eabf65885c542dd917485c4516d631c1fbf,2026-07-29,false,available,0.62,1747,24,0.1696230598669623,153,902,20,20,20
+grafana/grafana,sweep,3c66fe6f38ed4beda1cbb528c9766e0108067442,2026-07-29,false,available,0.525,18545,24,0.29285714285714287,287,980,20,44,20
+langchain-ai/langchain,sweep,cdca311de2958e497cfd823a45ddb770d0ef94c0,2026-07-29,false,available,0.685,5421,24,0.33368532206969376,316,947,20,25,20
+vercel/next.js,sweep,f3edea1b06730ce507aeb1b10c8e4f652ca5540d,2026-07-29,false,available,0.83,10828,24,0.326271186440678,308,944,20,45,20
+prisma/prisma,sweep,d5192b16980275c75ca57b3b83e45b6311273e9b,2026-07-29,false,available,0.995,7749,24,0.6054852320675106,574,948,20,11,20
+facebook/react,sweep,6cb4322d65f4c68daa183df24b5f81668cedab14,2026-07-29,false,available,0.725,2432,24,0.31573389651531153,299,947,20,34,20
+strapi/strapi,sweep,8ea317f014dd0a6529c2fba968a2b15d932d2df8,2026-07-29,false,available,0.62,2097,24,0.32,312,975,20,37,20
+supabase/supabase,sweep,0d465e7b5fb5c166e3887c6e7aad4afe8eece3b4,2026-07-29,false,available,0.905,8937,24,0.24405377456049637,236,967,20,49,20
+tailwindlabs/tailwindcss,sweep,6de87c62c4633007872986339f7b3a11600de923,2026-07-28,false,available,0.845,1420,24,0.4064864864864865,376,925,20,10,20
+grafana/grafana,full-depth,3c66fe6f38ed4beda1cbb528c9766e0108067442,2026-07-29,false,available,0.525,18545,24,0.2514500170590242,737,2931,64,,61
