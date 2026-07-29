@@ -197,6 +197,17 @@ export interface RegionRecord {
   /** Distinct post-T contributor identities. Zero for a dormant region. LOWER is worse. */
   contributorsPostT: number;
 
+  /**
+   * The region's directory still held at least one non-excluded file in the tree at T.
+   *
+   * A PRE-TREATMENT covariate: it is a function of history before T, measured at the same
+   * instant the flag is, so it is not downstream of flagging and stratifying on it is ordinary
+   * covariate adjustment rather than the collider mistake this file exists to avoid. It turned
+   * out to matter enormously — see `DormancyResult.extant`. Null when the tree comparison could
+   * not be run for the repository at all.
+   */
+  extantAtT: boolean | null;
+
   // ---- wholesale rewrite. See the block comment above for the operationalisation. ----
   /** Non-excluded files under the region in the tree at T. The denominator for `turnover`. */
   filesAtT: number;
@@ -212,7 +223,13 @@ export interface RegionRecord {
   replacement: number | null;
   /** linesAddedPostT / linesDeletedPostT. Null when nothing was deleted. NOT ORIENTED. */
   addDeleteRatio: number | null;
-  /** Null when the structural measures could not be computed for this repo at all. */
+  /**
+   * Null when the region had nothing to rewrite — no files in the tree at T — or when the tree
+   * comparison could not be run. NOT false: a region that was already gone before T is not a
+   * region that survived the window intact, and scoring it `false` would have counted 20 of the
+   * 28 flagged regions in the four-repo run as "not rewritten" when what they were is *already
+   * rewritten, before the map was built*.
+   */
   rewritten: boolean | null;
 }
 
@@ -259,6 +276,29 @@ export interface DormancyResult {
   unflaggedRate: number | null;
   riskRatio: Interval;
   riskDifference: Interval;
+  /**
+   * THE SENSITIVITY ANALYSIS THAT CHANGES HOW THE HEADLINE READS, and the reason it is computed
+   * at all: on the four-repo run, 20 of the 28 flagged regions had NO FILES LEFT in the tree at
+   * T. Their directories had already been deleted or moved before the map was built — the map's
+   * 60-month window admits a region on the strength of commits that are years old, so a
+   * directory that ceased to exist in year two is still a row in year five. An empty directory
+   * receiving no commits is arithmetic, not prediction.
+   *
+   * So the dormancy comparison is repeated over only the regions that still existed at T.
+   * `extantAtT` is pre-treatment, so this is covariate adjustment and not a second collider.
+   */
+  extant: {
+    flaggedTotal: number;
+    flaggedDormant: number;
+    unflaggedTotal: number;
+    unflaggedDormant: number;
+    flaggedRate: number | null;
+    unflaggedRate: number | null;
+    riskRatio: Interval;
+    riskDifference: Interval;
+  };
+  /** Regions already empty at T, by arm, and how many of them were dormant. */
+  goneBeforeT: { flagged: number; unflagged: number; dormant: number; total: number };
 }
 
 /**
@@ -677,16 +717,19 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
       const structural = filesAtTByRegion !== null;
       const added = addedByRegion.get(r.path) ?? 0;
       const deleted = deletedByRegion.get(r.path) ?? 0;
+      const extantAtT = structural ? filesAtT > 0 : null;
       const turnover = structural && filesAtT > 0 ? filesGone / filesAtT : null;
       const replacement = structural && linesAtT > 0 ? deleted / linesAtT : null;
       const addDeleteRatio = deleted > 0 ? added / deleted : null;
-      const rewritten = !structural
-        ? null
-        : (turnover !== null && turnover >= REWRITE_TURNOVER_THRESHOLD) ||
-          (replacement !== null &&
-            replacement >= REWRITE_REPLACEMENT_THRESHOLD &&
-            addDeleteRatio !== null &&
-            addDeleteRatio <= REWRITE_RATIO_QUALIFIER);
+      // Null, not false, when there was nothing in the region to rewrite. See the field comment.
+      const rewritten =
+        !structural || filesAtT === 0
+          ? null
+          : (turnover !== null && turnover >= REWRITE_TURNOVER_THRESHOLD) ||
+            (replacement !== null &&
+              replacement >= REWRITE_REPLACEMENT_THRESHOLD &&
+              addDeleteRatio !== null &&
+              addDeleteRatio <= REWRITE_RATIO_QUALIFIER);
 
       allRegions.push({
         repo: name,
@@ -695,6 +738,7 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
         postCommits: n,
         dormant: n === 0,
         contributorsPostT: contributorsByRegion.get(r.path)?.size ?? 0,
+        extantAtT,
         filesAtT,
         filesGone,
         turnover,
@@ -746,6 +790,13 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
   const allUnflagged = allRegions.filter((r) => !r.flagged);
   const dormF: number[] = allFlagged.map((r) => (r.dormant ? 1 : 0));
   const dormU: number[] = allUnflagged.map((r) => (r.dormant ? 1 : 0));
+  // The sensitivity analysis: the same comparison over regions that still existed at T.
+  const extF = allFlagged.filter((r) => r.extantAtT === true);
+  const extU = allUnflagged.filter((r) => r.extantAtT === true);
+  const eDormF: number[] = extF.map((r) => (r.dormant ? 1 : 0));
+  const eDormU: number[] = extU.map((r) => (r.dormant ? 1 : 0));
+  const goneRegions = allRegions.filter((r) => r.extantAtT === false);
+
   const dormancy: DormancyResult = {
     flaggedTotal: allFlagged.length,
     flaggedDormant: dormF.reduce((a, b) => a + b, 0),
@@ -755,7 +806,31 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
     unflaggedRate: allUnflagged.length ? mean(dormU) : null,
     riskRatio: bootstrapRatio(dormF, dormU),
     riskDifference: bootstrapDifference(dormF, dormU),
+    extant: {
+      flaggedTotal: extF.length,
+      flaggedDormant: eDormF.reduce((a, b) => a + b, 0),
+      unflaggedTotal: extU.length,
+      unflaggedDormant: eDormU.reduce((a, b) => a + b, 0),
+      flaggedRate: extF.length ? mean(eDormF) : null,
+      unflaggedRate: extU.length ? mean(eDormU) : null,
+      riskRatio: bootstrapRatio(eDormF, eDormU),
+      riskDifference: bootstrapDifference(eDormF, eDormU),
+    },
+    goneBeforeT: {
+      flagged: goneRegions.filter((r) => r.flagged).length,
+      unflagged: goneRegions.filter((r) => !r.flagged).length,
+      dormant: goneRegions.filter((r) => r.dormant).length,
+      total: goneRegions.length,
+    },
   };
+  if (dormancy.goneBeforeT.flagged > 0) {
+    notes.push(
+      `${dormancy.goneBeforeT.flagged} of the ${dormancy.flaggedTotal} flagged regions had no files ` +
+        'left in the tree at T — their directories were deleted or moved before the map was even ' +
+        'built, because the 60-month window admits a region on the strength of commits that are ' +
+        'years old. Section 1 reports the dormancy comparison with and without them.'
+    );
+  }
 
   // ── COMPREHENSION-ORIENTED OUTCOMES, FULL SAMPLE ────────────────────────────────────────
   const comprehension: Comparison[] = [
@@ -813,8 +888,8 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
   // answers "when someone DOES touch a flagged region, is it rewritten?" — the question the
   // outreach actually wants — and it is collider-biased, so it is reported in the secondary
   // section with the label attached and no direction claimed from it.
-  const activeKeys = new Set(regions.map((r) => `${r.repo} ${r.region}`));
-  const activeAll = allRegions.filter((r) => activeKeys.has(`${r.repo} ${r.region}`));
+  const activeKeys = new Set(regions.map((r) => `${r.repo}\x00${r.region}`));
+  const activeAll = allRegions.filter((r) => activeKeys.has(`${r.repo}\x00${r.region}`));
   const actF = activeAll.filter((r) => r.flagged);
   const actU = activeAll.filter((r) => !r.flagged);
   const conditionedComprehension: Comparison[] = [
@@ -925,6 +1000,27 @@ const p3 = (v: number) => (Number.isFinite(v) ? v.toFixed(3) : 'not computed');
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 
 /**
+ * A ZERO-WIDTH INTERVAL IS NOT A PRECISE ANSWER, and it must never be typeset as one.
+ *
+ * `0.000 [0.000, 0.000]` is the most misleading thing this report can print: it reads as an
+ * exact null measured to three decimal places, and it is produced by the opposite situation —
+ * an arm in which every region has the same value, so every bootstrap resample is identical and
+ * the interval collapses. It happens whenever the treatment arm records zero events, which is
+ * common here because the flagged arm is small. The report says which of the two it is looking
+ * at, every time, rather than leaving the reader to guess from the width.
+ */
+function degenerate(iv: Interval, nFlagged: number): string {
+  if (iv.n === 0 || !Number.isFinite(iv.lo) || !Number.isFinite(iv.hi)) return '';
+  if (iv.hi - iv.lo > 0) return '';
+  return (
+    ' **This interval has zero width, which is not precision.** Every region in one arm carries ' +
+    `the same value, so every resample of it is identical; with only ${nFlagged} region` +
+    `${nFlagged === 1 ? '' : 's'} in the flagged arm that is a small-sample artifact and not a ` +
+    'measurement. Read it as "no variation to bootstrap", never as an exact null.'
+  );
+}
+
+/**
  * THE COLLIDER CAVEAT, in one place so it cannot drift between the sections that carry it.
  *
  * Every conditioned comparison in the report is introduced by this text or points at it.
@@ -965,6 +1061,15 @@ function verdictLine(c: Comparison): string {
       '> **No orientation.** Neither direction of this measure is unambiguously worse — a region ' +
       'can be growing, shrinking or substituting — so it is reported descriptively and no ' +
       'direction is claimed from it. It qualifies the replacement test above; it is not a test.'
+    );
+  }
+  // A zero-width interval that happens to miss zero would otherwise be read out as a confident
+  // finding. It is the opposite: it means one arm had no variation left to resample.
+  if (Number.isFinite(c.difference.lo) && c.difference.hi - c.difference.lo === 0) {
+    return (
+      '> **No direction claimed.** The bootstrap interval has zero width — one arm carries a ' +
+      'single value across all of its regions, so there was no variation to resample. That is a ' +
+      'small-sample artifact, not a precise result.'
     );
   }
   const crosses = c.difference.lo <= 0 && c.difference.hi >= 0;
@@ -1024,7 +1129,8 @@ function comparisonBlock(c: Comparison, L: string[]): void {
     c.nFlagged === 0 || c.nUnflagged === 0
       ? 'Difference (flagged − not): **not computed** — one arm is empty.'
       : `Difference (flagged − not): **${p3(c.difference.estimate)}** ` +
-          `95% CI [${p3(c.difference.lo)}, ${p3(c.difference.hi)}], cluster bootstrap over regions.`
+          `95% CI [${p3(c.difference.lo)}, ${p3(c.difference.hi)}], cluster bootstrap over regions.` +
+          degenerate(c.difference, c.nFlagged)
   );
   L.push('');
   L.push(verdictLine(c));
@@ -1096,12 +1202,14 @@ export function formatValidationReport(r: ValidationResult): string {
               ? `, from ${5000 - rr.discarded} of 5,000 resamples — ${rr.discarded} were discarded ` +
                 'because the comparison arm resampled to zero dormant regions and the ratio was ' +
                 'undefined on them. A large discard count means the upper bound is not trustworthy.'
-              : ', cluster bootstrap over regions, no resamples discarded.'))
+              : ', cluster bootstrap over regions, no resamples discarded.') +
+          degenerate(rr, d.flaggedTotal))
     );
     L.push('');
     L.push(
       `**Risk difference (flagged − not flagged): ${p3(rd.estimate)}** ` +
-        `95% CI [${p3(rd.lo)}, ${p3(rd.hi)}], cluster bootstrap over regions.`
+        `95% CI [${p3(rd.lo)}, ${p3(rd.hi)}], cluster bootstrap over regions.` +
+        degenerate(rd, d.flaggedTotal)
     );
     L.push('');
     const crosses = rd.lo <= 0 && rd.hi >= 0;
@@ -1116,6 +1224,80 @@ export function formatValidationReport(r: ValidationResult): string {
     );
     L.push('');
   }
+  // ── THE SENSITIVITY ANALYSIS. It changes how the headline reads and it goes next to it. ──
+  const g = d.goneBeforeT;
+  const e = d.extant;
+  if (g.total > 0) {
+    L.push('### 1a. Sensitivity: most of the flagged arm was already gone at T');
+    L.push('');
+    L.push(
+      `**${g.flagged} of the ${d.flaggedTotal} flagged regions had no files left in the tree at T** ` +
+        `(against ${g.unflagged} of ${d.unflaggedTotal} unflagged). Their directories had already ` +
+        'been deleted or moved before the map was built. The map\'s 60-month window admits a region ' +
+        'on the strength of commits that are years old, so a directory that ceased to exist in year ' +
+        'two is still a row in year five — and a region with no files cannot receive commits. ' +
+        `${g.dormant} of those ${g.total} already-empty regions are dormant, which is arithmetic ` +
+        'rather than prediction.'
+    );
+    L.push('');
+    L.push(
+      'So the dormancy comparison is repeated over only the regions that still existed at T. ' +
+        'Whether a region\'s directory exists at T is a function of history **before** T, measured ' +
+        'at the same instant the flag is, so it is not downstream of flagging — stratifying on it is ' +
+        'ordinary covariate adjustment and not a second collider.'
+    );
+    L.push('');
+    L.push('| arm | regions still extant at T | went dormant | dormancy rate |');
+    L.push('| --- | --- | --- | --- |');
+    L.push(
+      `| flagged | ${e.flaggedTotal} | ${e.flaggedDormant} | ` +
+        `${e.flaggedRate === null ? 'not computed' : pct(e.flaggedRate)} |`
+    );
+    L.push(
+      `| not flagged | ${e.unflaggedTotal} | ${e.unflaggedDormant} | ` +
+        `${e.unflaggedRate === null ? 'not computed' : pct(e.unflaggedRate)} |`
+    );
+    L.push('');
+    if (e.flaggedTotal === 0 || e.unflaggedTotal === 0) {
+      L.push(
+        '> **Not computed.** One arm has no extant regions at all, which is itself the finding: ' +
+          'read it with the counts above and not as a null.'
+      );
+    } else {
+      L.push(
+        `Risk ratio: **${p3(e.riskRatio.estimate)}**` +
+          (e.riskRatio.n === 0
+            ? ' — not computed; the comparison arm resampled to no dormant regions, so the ratio is undefined.'
+            : ` 95% CI [${p3(e.riskRatio.lo)}, ${p3(e.riskRatio.hi)}]` +
+              (e.riskRatio.discarded
+                ? ` (${e.riskRatio.discarded} of 5,000 resamples discarded for a zero denominator)`
+                : '')) +
+          `. Risk difference: **${p3(e.riskDifference.estimate)}** ` +
+          `95% CI [${p3(e.riskDifference.lo)}, ${p3(e.riskDifference.hi)}].` +
+          degenerate(e.riskRatio, e.flaggedTotal) +
+          degenerate(e.riskDifference, e.flaggedTotal)
+      );
+      L.push('');
+      const eCrosses = e.riskDifference.lo <= 0 && e.riskDifference.hi >= 0;
+      L.push(
+        eCrosses
+          ? '> **The headline does not survive this adjustment.** Among regions that still existed ' +
+              'at T the interval crosses zero, so the dormancy result is carried by regions whose ' +
+              'code had already been removed before the map was built. Note that this arm is small ' +
+              '— the adjustment discards most of the flagged regions — so this is not evidence of ' +
+              'equivalence either; it is a loss of the evidence, which is a different thing and a ' +
+              'reason not to cite the headline without this table beside it.'
+          : e.riskDifference.estimate > 0
+          ? '> The headline survives the adjustment: among regions that still existed at T, flagged ' +
+              'regions still went dormant more often.'
+          : '> **Among regions that still existed at T the difference reverses: flagged regions went ' +
+              'dormant LESS often.** The headline is carried entirely by regions whose code had ' +
+              'already been removed before the map was built. Do not cite the headline alone.'
+      );
+    }
+    L.push('');
+  }
+
   L.push('**The honest caveat, which has to travel with the number.**');
   L.push('');
   L.push(
@@ -1127,6 +1309,21 @@ export function formatValidationReport(r: ValidationResult): string {
       'someone can still write them.'
   );
   L.push('');
+  if (g.total > 0) {
+    // The denominator here is the number of DORMANT regions, not the number of already-empty
+    // ones — printing g.total gave "69 of the 69", which quietly dropped the three dormant
+    // regions that did still have files and overstated how complete the explanation is.
+    const dormantTotal = d.flaggedDormant + d.unflaggedDormant;
+    L.push(
+      `And it is *more* mechanical than that sentence admits, which is what section 1a is for: ` +
+        `${g.dormant} of the ${dormantTotal} dormant regions across both arms had no files in the ` +
+        'tree at T at all. For those, "received no commits in the following year" is not a prediction ' +
+        'that came true, it is a description of a directory that no longer existed. Read the ' +
+        'headline number as an upper bound and the extant-only table as the part of it that is ' +
+        'about live code.'
+    );
+    L.push('');
+  }
   L.push(
     'It is **not** evidence that flagged regions produce worse work when someone does touch them. ' +
       'That is the claim the outreach would want, and nothing in this document supports it — the ' +
@@ -1342,6 +1539,9 @@ export function formatValidationReport(r: ValidationResult): string {
   L.push('  the map measures and in ways it does not, so this is an association and not an effect.');
   L.push('- The dormancy result is close to a restatement of the flagging rule. It is a prediction');
   L.push('  about activity, not about quality, and section 1 says so at the point of use.');
+  L.push('- Most of the dormant regions in both arms had already been deleted from the tree before T,');
+  L.push('  so the headline is substantially a statement about the map\'s 60-month window admitting');
+  L.push('  directories that no longer exist. Section 1a adjusts for it; the adjusted arm is small.');
   L.push('- The defect outcomes are derived from commit messages, which is the same channel the record');
   L.push('  dimension measures. A team that never writes "revert" looks healthy here by construction.');
   L.push('  The section 2 outcomes are structural — trees, line counts, identity counts — to avoid this,');
