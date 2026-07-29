@@ -4,6 +4,7 @@
  *   riskmap map <clone>          build the page. git only unless --coverage is passed.
  *   riskmap sweep --repos F      run the map across many repositories and report the hit rate.
  *   riskmap validate <clone>     the retrospective test: does a flag predict anything?
+ *   riskmap regress <clone>      the same test on the dimensions, continuously, with real n.
  *   riskmap calibrate            rebuild the calibration distribution from the study results.
  *
  * `map` is deliberately usable with no keys, no config and no network. The build spec is
@@ -19,6 +20,7 @@ import { execSync } from 'node:child_process';
 import { buildMap } from './build.js';
 import { renderHtml } from './render.js';
 import { runValidation, formatValidationReport } from './validate.js';
+import { runRegression, formatRegressionReport } from './regress.js';
 import { runSweep, sweepWorker, DiskSpaceError } from './sweep.js';
 import { AnthropicBackend, OpenAiBackend } from './vendor/backends.js';
 import type { LlmBackend } from '@reckon/core';
@@ -223,6 +225,50 @@ async function cmdValidate() {
 }
 
 /**
+ * The same retrospective data, regressed on the DIMENSIONS instead of on the flag.
+ *
+ *   riskmap regress clones/a clones/b --months-back 18 --follow-months 12 --out out/regress
+ *
+ * `validate` tests a threshold rule that fires on a handful of regions and has been rewritten
+ * twice. This tests the continuous quantities underneath it over every region at the cutoff,
+ * which is the same question with two orders of magnitude more of the data already on disk.
+ */
+async function cmdRegress() {
+  // Same argument handling as `validate`: flag VALUES are not repositories, or `--months-back 18`
+  // contributes "18" as a clone path and fails two minutes in with `spawn git ENOENT`.
+  const rest = argv.slice(1);
+  const repos = rest.filter((a, i) => {
+    if (a.startsWith('--')) return false;
+    const prev = rest[i - 1];
+    return !(prev && prev.startsWith('--'));
+  });
+  if (repos.length === 0) {
+    throw new Error(
+      'usage: riskmap regress <clone> [<clone>...] [--months-back 18] [--follow-months 12] [--out DIR]'
+    );
+  }
+
+  const result = await runRegression({
+    repos: repos.map((r) => resolve(r)),
+    monthsBack: Number(arg('months-back', '18')),
+    followMonths: Number(arg('follow-months', '12')),
+    onProgress: (m) => console.error(`  ${m}`),
+  });
+
+  const outDir = resolve(arg('out', join(ROOT, 'out', 'regress'))!);
+  mkdirSync(outDir, { recursive: true });
+  const md = join(outDir, 'regression.md');
+  writeFileSync(md, formatRegressionReport(result));
+  writeFileSync(join(outDir, 'regression.json'), `${JSON.stringify(result, null, 2)}\n`);
+  console.error(
+    `\n${result.sample.analysis} regions in the analysis sample of ${result.sample.regionsAtT} at T ` +
+      `(${result.sample.flaggedAtT} flagged by the current rule).`
+  );
+  console.error(`wrote ${md}`);
+  console.error(`wrote ${join(outDir, 'regression.json')}`);
+}
+
+/**
  * Rebuild `calibration/study-coverage.json` from the study's published per-PR scores.
  *
  * Derived rather than copied so the provenance is checkable: the source commit is recorded in
@@ -295,12 +341,15 @@ const COMMANDS: Record<string, () => void | Promise<void>> = {
   sweep: cmdSweep,
   'sweep-build': cmdSweepBuild,
   validate: cmdValidate,
+  regress: cmdRegress,
   calibrate: cmdCalibrate,
 };
 
 const run = cmd ? COMMANDS[cmd] : undefined;
 if (!run) {
-  console.error('commands: map <clone> | sweep --repos <file> | validate <clone>... | calibrate');
+  console.error(
+    'commands: map <clone> | sweep --repos <file> | validate <clone>... | regress <clone>... | calibrate'
+  );
   process.exit(1);
 }
 

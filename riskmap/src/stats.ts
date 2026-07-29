@@ -46,6 +46,59 @@ export function quantiles(xs: number[]): { p10: number; p25: number; p50: number
   };
 }
 
+/** Sample standard deviation (n−1). Zero for a constant or a single observation. */
+export function sd(xs: number[]): number {
+  if (xs.length < 2) return 0;
+  const m = mean(xs);
+  let s = 0;
+  for (const x of xs) s += (x - m) ** 2;
+  return Math.sqrt(s / (xs.length - 1));
+}
+
+/**
+ * Pearson correlation. NaN when either variable is constant, which is a real answer — an
+ * undefined correlation — and must not be printed as 0.000, because a printed zero is the claim
+ * "measured, and there is nothing there".
+ */
+export function pearson(xs: number[], ys: number[]): number {
+  const n = Math.min(xs.length, ys.length);
+  if (n < 2) return Number.NaN;
+  const mx = mean(xs.slice(0, n));
+  const my = mean(ys.slice(0, n));
+  let sxy = 0;
+  let sxx = 0;
+  let syy = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i]! - mx;
+    const dy = ys[i]! - my;
+    sxy += dx * dy;
+    sxx += dx * dx;
+    syy += dy * dy;
+  }
+  if (sxx === 0 || syy === 0) return Number.NaN;
+  return sxy / Math.sqrt(sxx * syy);
+}
+
+/**
+ * Ordinary least squares slope of y on x, with no intercept term needed because both series are
+ * centred inside. Returns null when x has no variation, which is the honest answer: with a
+ * constant predictor there is no slope to estimate and any number returned would be invented.
+ */
+export function olsSlope(xs: number[], ys: number[]): number | null {
+  const n = Math.min(xs.length, ys.length);
+  if (n < 2) return null;
+  const mx = mean(xs.slice(0, n));
+  const my = mean(ys.slice(0, n));
+  let sxy = 0;
+  let sxx = 0;
+  for (let i = 0; i < n; i++) {
+    sxy += (xs[i]! - mx) * (ys[i]! - my);
+    sxx += (xs[i]! - mx) ** 2;
+  }
+  if (sxx === 0) return null;
+  return sxy / sxx;
+}
+
 export interface Interval {
   estimate: number;
   lo: number;
@@ -58,6 +111,62 @@ export interface Interval {
    * object from one built from all of them, and the reader should be able to see which they have.
    */
   discarded?: number;
+}
+
+/**
+ * CLUSTER BOOTSTRAP OF AN ARBITRARY STATISTIC OVER REGIONS.
+ *
+ * `bootstrapDifference` and `bootstrapRatio` both assume the statistic is a function of two
+ * arms of numbers. A regression coefficient is not: it is a function of the WHOLE sample of
+ * regions, each carrying a predictor and an outcome and a stratum label, and the resampling has
+ * to keep those together. Resampling the columns independently would destroy the association
+ * being estimated — it is the null hypothesis, computed by accident.
+ *
+ * So the unit resampled here is the region RECORD, not a number. Same discipline as the other
+ * two: with replacement, at the region level, percentile interval, because the statistic is a
+ * ratio of sums over a small skewed sample and a normal approximation would understate the tails.
+ *
+ * UNDEFINED RESAMPLES ARE DISCARDED, NOT COERCED. A resample can land with no variation in the
+ * predictor, or with every observation inside one stratum, and the statistic is then genuinely
+ * undefined. `stat` returns null for those and the resample is dropped, exactly as
+ * `bootstrapRatio` drops a zero denominator; the count comes back in `discarded` so the reader
+ * can see how much of the interval is missing. A high discard count is itself the finding — it
+ * means the estimate rests on a handful of influential regions.
+ */
+export function bootstrapStatistic<T>(
+  units: T[],
+  stat: (sample: T[]) => number | null,
+  iterations = 2000,
+  seed = 20260729
+): Interval {
+  const point = stat(units);
+  if (units.length === 0 || point === null || !Number.isFinite(point)) {
+    return { estimate: point === null ? Number.NaN : point, lo: Number.NaN, hi: Number.NaN, n: units.length, discarded: 0 };
+  }
+  const rng = mulberry32(seed);
+  const draws: number[] = [];
+  let discarded = 0;
+  const buf: T[] = new Array(units.length);
+  for (let i = 0; i < iterations; i++) {
+    for (let j = 0; j < units.length; j++) buf[j] = units[Math.floor(rng() * units.length)]!;
+    const v = stat(buf);
+    if (v === null || !Number.isFinite(v)) {
+      discarded++;
+      continue;
+    }
+    draws.push(v);
+  }
+  if (draws.length === 0) {
+    return { estimate: point, lo: Number.NaN, hi: Number.NaN, n: units.length, discarded };
+  }
+  draws.sort((a, b) => a - b);
+  return {
+    estimate: point,
+    lo: quantile(draws, 0.025),
+    hi: quantile(draws, 0.975),
+    n: units.length,
+    discarded,
+  };
 }
 
 /**

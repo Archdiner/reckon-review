@@ -6,3 +6,7 @@ dist/
 *.pem
 *.log
 .DS_Store
+
+# Delivery bundle, assembled from example/ and out/ for sending. Both sources are already
+# tracked or regenerable, so versioning a third copy would just be drift waiting to happen.
+session-results/

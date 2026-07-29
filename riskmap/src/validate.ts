@@ -190,6 +190,43 @@ export interface RegionRecord {
   repo: string;
   region: string;
   flagged: boolean;
+
+  // ── THE DIMENSIONS AS THEY STOOD AT T ───────────────────────────────────────────────────────
+  //
+  // Carried on the full-sample record so the flag is not the only thing that can be tested.
+  // Every one of these is a function of history strictly before T, measured at the same instant
+  // the flag is, so they are pre-treatment in exactly the sense `extantAtT` is. `regress.ts`
+  // uses them as continuous predictors; the flag is a threshold applied to two of them, and a
+  // rule that has been rewritten twice is a much noisier thing to test than the quantities
+  // underneath it.
+
+  /** Last-touch file share: of the files here at T, the share last written by an inactive one. */
+  orphanedShare: number;
+  /** Share of region commits from the single largest contributor at T. */
+  concentration: number;
+  /**
+   * Share of mechanism questions the region's commit records answer.
+   *
+   * NULL unless the run scored coverage, which needs a model — `runValidation` and `runRegression`
+   * both build with `coverage: null`, so in practice this is null for every region. It is carried
+   * as null rather than dropped so a consumer can report the reduced n honestly. NEVER IMPUTE IT:
+   * substituting a mean would turn "we did not measure this" into a measurement of zero variance
+   * and give it a coefficient of exactly nothing, which reads identically to a tested null.
+   */
+  recordCoverage: number | null;
+  /** Churn at T. The confounder, not just a predictor — see `regress.ts`. */
+  commitsPerMonthAtT: number;
+  /** Distinct contributor identities touching the region in the window ending at T. */
+  contributorsAtT: number;
+  /**
+   * The map's OWN `extant` field, as `buildMap` computed it. Kept only so the harness can check
+   * it against `extantAtT`, which is measured from the tree at T directly. They disagree: the
+   * builder resolves the tree with `HEAD@{<date>}`, which is reflog notation, and a fresh clone
+   * has one reflog entry dated at clone time — so under `asOf` the builder silently reads the
+   * tree at HEAD TODAY rather than at T. Nothing here depends on it.
+   */
+  mapExtant: boolean;
+
   /** Commits landing in the region during the follow-up window. Zero means dormant. */
   postCommits: number;
   /** No post-T commits at all. The primary outcome. */
@@ -231,6 +268,12 @@ export interface RegionRecord {
    * rewritten, before the map was built*.
    */
   rewritten: boolean | null;
+
+  // ---- defect measures. Rates over post-T commits, so undefined without any. ----
+  /** Share of post-T commits marked a revert/hotfix/regression fix. Null when dormant (0/0). */
+  fixRate: number | null;
+  /** Share of post-T commits re-touching a file touched within 30 days. Null when dormant. */
+  reworkRate: number | null;
 }
 
 export interface RegionOutcome {
@@ -570,25 +613,64 @@ function compare(
   };
 }
 
-export async function runValidation(opts: ValidationOpts): Promise<ValidationResult> {
+/**
+ * Everything one repository contributes to a retrospective analysis.
+ *
+ * EXTRACTED SO IT CAN BE REUSED, not duplicated. `regress.ts` needs precisely this — the map as
+ * of T through the real builder, and the post-T outcomes measured against it — and a second
+ * implementation of "build as of T and count what happened next" would be a second thing to keep
+ * correct. The collider discussion at the top of this file, the size cap on the outcome window,
+ * the region-matching rule and the identity handling are all decisions that took a run to find;
+ * they live here once.
+ */
+export interface RepoCollection {
+  name: string;
+  /** ISO date of T, or the empty string when the repository contributed nothing. */
+  asOf: string;
+  /** Every region in the map at T. The full sample. */
+  records: RegionRecord[];
+  /** Only the regions with post-T activity. Conditioned on a descendant of the treatment. */
+  outcomes: RegionOutcome[];
+  mergeLatency: MergeLatencyProbe | null;
+  structuralGaps: string[];
+  /** Non-null when the repository contributed nothing at all; the string is the reason. */
+  skipped: string | null;
+}
+
+export interface CollectOpts {
+  monthsBack: number;
+  followMonths: number;
+  /**
+   * Run the author-date/committer-date probe. Only the validation report consumes it; a caller
+   * that will not print the verdict should not pay for a full `git log` to compute it.
+   */
+  probeLag?: boolean;
+  onProgress?: (msg: string) => void;
+}
+
+const emptyCollection = (name: string, reason: string): RepoCollection => ({
+  name,
+  asOf: '',
+  records: [],
+  outcomes: [],
+  mergeLatency: null,
+  structuralGaps: [],
+  skipped: reason,
+});
+
+export async function collectRepo(repo: string, opts: CollectOpts): Promise<RepoCollection> {
   const log = opts.onProgress ?? (() => {});
   const regions: RegionOutcome[] = [];
   const allRegions: RegionRecord[] = [];
-  const asOfByRepo: Record<string, string> = {};
-  const notes: string[] = [];
   const structuralGaps: string[] = [];
-  const mergeLatency: MergeLatencyProbe[] = [];
-  let silentFlagged = 0;
-  let silentUnflagged = 0;
 
-  for (const repo of opts.repos) {
+  {
     const name = await readRepoName(repo);
     log(`${name}: building the map as of ${opts.monthsBack} months ago`);
 
     const all = await readLog({ repo });
     if (all.length === 0) {
-      notes.push(`${name}: no commits read, skipped.`);
-      continue;
+      return emptyCollection(name, `${name}: no commits read, skipped.`);
     }
     // Not Math.max(...array): the spread throws RangeError above ~125k elements, and a full
     // clone of a large repository exceeds that. grafana is at 52k today.
@@ -596,14 +678,13 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
     for (const c of all) if (c.at > headAt) headAt = c.at;
     const T = headAt - opts.monthsBack * MS_PER_MONTH;
     const followEnd = Math.min(headAt, T + opts.followMonths * MS_PER_MONTH);
-    asOfByRepo[name] = new Date(T).toISOString().slice(0, 10);
+    const asOf = new Date(T).toISOString().slice(0, 10);
 
     // The map is built through the SAME builder the product path uses, with asOf set to T.
     // A validation that ran through a different builder would be validating a different tool.
     const { map } = await buildMap({ repo, asOf: T, coverage: null, onProgress: () => {} });
     if (map.regions.length === 0) {
-      notes.push(`${name}: no regions as of T, skipped.`);
-      continue;
+      return emptyCollection(name, `${name}: no regions as of T, skipped.`);
     }
 
     // APPLY THE MAP'S OWN SIZE CAP TO THE OUTCOME WINDOW. buildMap excludes commits touching
@@ -703,7 +784,7 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
       filesAtTByRegion = null;
     }
 
-    mergeLatency.push(await probeCommitterLag(repo, name));
+    const mergeLatency = opts.probeLag ? await probeCommitterLag(repo, name) : null;
 
     for (const r of map.regions) {
       const o = outcomes.get(r.path);
@@ -735,8 +816,16 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
         repo: name,
         region: r.path,
         flagged,
+        orphanedShare: r.orphanedShare,
+        concentration: r.concentration,
+        recordCoverage: r.recordCoverage,
+        commitsPerMonthAtT: r.commitsPerMonth,
+        contributorsAtT: r.contributors,
+        mapExtant: r.extant,
         postCommits: n,
         dormant: n === 0,
+        fixRate: n === 0 ? null : (o?.fixes ?? 0) / n,
+        reworkRate: n === 0 ? null : (o?.rework ?? 0) / n,
         contributorsPostT: contributorsByRegion.get(r.path)?.size ?? 0,
         extantAtT,
         filesAtT,
@@ -763,11 +852,7 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
       // conditioned on a descendant of the treatment and is reported as secondary for that
       // reason. The uncontaminated comparison is the dormancy result, computed from
       // `allRegions`, which every region above reaches.
-      if (n === 0) {
-        if (flagged) silentFlagged++;
-        else silentUnflagged++;
-        continue;
-      }
+      if (n === 0) continue;
       const lat = fixLatencies(post, depth, r.path, regionPaths);
       lat.sort((a, b) => a - b);
       regions.push({
@@ -783,7 +868,47 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
         medianFixLatencyDays: lat.length ? lat[Math.floor(lat.length / 2)]! : null,
       });
     }
+
+    return {
+      name,
+      asOf,
+      records: allRegions,
+      outcomes: regions,
+      mergeLatency,
+      structuralGaps,
+      skipped: null,
+    };
   }
+}
+
+export async function runValidation(opts: ValidationOpts): Promise<ValidationResult> {
+  const regions: RegionOutcome[] = [];
+  const allRegions: RegionRecord[] = [];
+  const asOfByRepo: Record<string, string> = {};
+  const notes: string[] = [];
+  const structuralGaps: string[] = [];
+  const mergeLatency: MergeLatencyProbe[] = [];
+
+  for (const repo of opts.repos) {
+    const c = await collectRepo(repo, {
+      monthsBack: opts.monthsBack,
+      followMonths: opts.followMonths,
+      probeLag: true,
+      ...(opts.onProgress ? { onProgress: opts.onProgress } : {}),
+    });
+    structuralGaps.push(...c.structuralGaps);
+    if (c.skipped !== null) {
+      notes.push(c.skipped);
+      continue;
+    }
+    asOfByRepo[c.name] = c.asOf;
+    allRegions.push(...c.records);
+    regions.push(...c.outcomes);
+    if (c.mergeLatency) mergeLatency.push(c.mergeLatency);
+  }
+
+  const silentFlagged = allRegions.filter((r) => r.flagged && r.dormant).length;
+  const silentUnflagged = allRegions.filter((r) => !r.flagged && r.dormant).length;
 
   // ── THE PRIMARY RESULT ──────────────────────────────────────────────────────────────────
   const allFlagged = allRegions.filter((r) => r.flagged);
