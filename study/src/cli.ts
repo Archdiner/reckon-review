@@ -243,6 +243,73 @@ function cmdDecompose() {
   console.log(text);
 }
 
+/**
+ * Unit-mismatch probe. Scores `record.md` against a subject-only variant of itself, on the same
+ * questions, in independent mode — the bound on how much a record loses when only part of it
+ * survives into git. See src/unitmismatch.ts for why this is a BOUND and not the description /
+ * commit-message contrast a reader might expect: that contrast is not constructible from this
+ * corpus, because the two channels arrive in git as one field.
+ */
+async function cmdUnitMismatch() {
+  const { backend, label, mock } = backendFor('scoring');
+  const b = buildVariants(PRS);
+  console.log(`Built ${b.written} subject-only variants (${b.identical} identical to their record — empty body).`);
+  console.log(`Scoring full vs subject-only independently with ${label}…`);
+  let last = 0;
+  const rep = await scoreVariants(PRS, backend, label, CONCURRENCY, flag('force'), (done, total) => {
+    if (done - last >= 25 || done === total) {
+      last = done;
+      console.log(`  ${done}/${total} PRs scored`);
+    }
+  });
+  console.log(`  written ${rep.written}, skipped ${rep.skipped}, PRs failed ${rep.failed.length}, questions failed ${rep.failedQuestions}`);
+  if (mock) console.log('  NOTE: mock backend — scores are hash values, not judgements.');
+
+  const rows = loadVariantRows(PRS);
+  const s = summarise(rows);
+  mkdirSync(OUT, { recursive: true });
+  writeFileSync(join(OUT, 'unit-mismatch-scores.csv'), variantCsv(rows));
+  writeFileSync(
+    join(OUT, 'unit-mismatch-summary.json'),
+    `${JSON.stringify(
+      {
+        scoringModel: label,
+        mock,
+        variantsBuilt: b,
+        scoreReport: { ...rep, failed: rep.failed },
+        paired: s,
+        byTier: Object.fromEntries(
+          ['empty', 'trivial', 'substantive'].map((t) => {
+            const sub = rows.filter((r) => r.tier === t);
+            return [t, sub.length ? { ...summarise(sub) } : null];
+          })
+        ),
+        byRepo: Object.fromEntries(
+          [...new Set(rows.map((r) => r.repo))].sort().map((repo) => {
+            const sub = rows.filter((r) => r.repo === repo);
+            return [repo, summarise(sub)];
+          })
+        ),
+        byProvenance: Object.fromEntries(
+          [...new Set(rows.map((r) => r.provenance))].sort().map((p) => {
+            const sub = rows.filter((r) => r.provenance === p);
+            return [p, summarise(sub)];
+          })
+        ),
+      },
+      null,
+      2
+    )}\n`
+  );
+  console.log(
+    `\nn=${s.n} PRs, ${s.nQuestions} questions. full ${s.fullMean.toFixed(1)}% explicit, ` +
+      `subject-only ${s.subjectMean.toFixed(1)}%. mean diff ${s.meanDiff.toFixed(1)} ` +
+      `[${s.ci[0].toFixed(1)}, ${s.ci[1].toFixed(1)}], median ${s.medianDiff.toFixed(1)}, ` +
+      `differing ${s.shareDiffering.toFixed(1)}%`
+  );
+  console.log(`Wrote ${join(OUT, 'unit-mismatch-scores.csv')}, unit-mismatch-summary.json`);
+}
+
 function cmdAnalyze() {
   mkdirSync(OUT, { recursive: true });
   const a = analyze(PRS);
@@ -435,6 +502,7 @@ const COMMANDS: Record<string, () => void | Promise<void>> = {
   'export-questions': cmdExportQuestions,
   'score-human-questions': cmdScoreHumanQuestions,
   analyze: cmdAnalyze,
+  'unit-mismatch': cmdUnitMismatch,
   'handlabel-export': cmdHandlabelExport,
   'handlabel-compare': cmdHandlabelCompare,
 };
@@ -453,6 +521,7 @@ async function main() {
     console.log('  score                     stage 4: blinded scoring (--score-mode paired|independent, --force)');
     console.log('  score3                    stage 4b: real/synthetic/paraphrase scored independently (--force)');
     console.log('  analyze                   stage 6: stats, CSVs and report');
+    console.log('  unit-mismatch             full record vs subject-only, same questions (--force)');
     console.log('  analyze3                  stage 6b: three-arm report — is the gap content or form?');
     console.log('  decompose                 agent/human contrast with diff size held fixed');
     console.log('  length                    record length vs change size, reported continuously');
@@ -468,7 +537,7 @@ async function main() {
     console.log('  STUDY_ROOT, STUDY_CLONES, STUDY_CONCURRENCY');
     process.exit(1);
   }
-  if (['questions', 'synthetic', 'paraphrase', 'score', 'score3'].includes(cmd)) {
+  if (['questions', 'synthetic', 'paraphrase', 'score', 'score3', 'unit-mismatch'].includes(cmd)) {
     const warn = selfJudgementWarning();
     if (warn) console.warn(`\nWARNING: ${warn}\n`);
   }
