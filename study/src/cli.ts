@@ -17,7 +17,7 @@
  *   study handlabel-compare
  */
 
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, readFileSync, copyFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -167,6 +167,72 @@ function cmdHandlabelCompare() {
   console.log(text);
 }
 
+/**
+ * Copy the publishable artifacts out of the gitignored working directory into `results/`,
+ * which is committed.
+ *
+ * The split is deliberate. `data/` holds ~1000 PR directories of raw diffs — derived,
+ * rebuildable from `clone` + `collect`, and far too large to version. `results/` holds only
+ * what a reader needs to re-check the claims: the scores, the report, and a manifest saying
+ * which models and which commit produced them.
+ *
+ * Publishing REFUSES on a mock run. Mock scores are hash values, and a `results/` directory
+ * containing them would be indistinguishable from real findings a month later — which is
+ * exactly the confusion the rest of this pipeline exists to prevent.
+ */
+async function cmdPublish() {
+  const RESULTS = join(process.cwd(), 'results');
+  mkdirSync(RESULTS, { recursive: true });
+
+  const analysisPath = join(OUT, 'analysis.json');
+  let analysis: any = null;
+  if (existsSync(analysisPath)) {
+    analysis = JSON.parse(readFileSync(analysisPath, 'utf8'));
+    if (analysis?.mock) {
+      console.error('Refusing to publish: the scored run used the mock backend.');
+      console.error('Mock scores are hash values. Publishing them would leave a results/');
+      console.error('directory indistinguishable from real findings. Run with real credentials.');
+      process.exit(2);
+    }
+  }
+
+  let commit = 'unknown';
+  try {
+    commit = (await exec('git', ['rev-parse', 'HEAD'])).stdout.trim();
+  } catch {
+    /* not a git checkout; leave unknown */
+  }
+
+  const artifacts = [
+    'collect-report.json', 'corpus-summary.md', 'report.md', 'analysis.json',
+    'per-pr-scores.csv', 'per-question-scores.csv', 'human-validation.md',
+  ];
+  const copied: string[] = [];
+  for (const f of artifacts) {
+    const src = join(OUT, f);
+    if (!existsSync(src)) continue;
+    copyFileSync(src, join(RESULTS, f));
+    copied.push(f);
+  }
+
+  const manifest = {
+    publishedAtUtc: new Date().toISOString(),
+    commit,
+    scored: analysis !== null,
+    prsScored: analysis?.n ?? 0,
+    questionsScored: analysis?.nQuestions ?? 0,
+    generationModel: process.env.STUDY_GEN_MODEL || (analysis ? 'see blind.json' : null),
+    scoringModel: process.env.STUDY_SCORE_MODEL || (analysis ? 'see blind.json' : null),
+    artifacts: copied,
+  };
+  writeFileSync(join(RESULTS, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+
+  console.log(`Published ${copied.length} artifact(s) to results/:`);
+  for (const f of copied) console.log(`  ${f}`);
+  console.log('  manifest.json');
+  if (!analysis) console.log('\nNo analysis found — published corpus artifacts only.');
+}
+
 function cmdDescribe() {
   mkdirSync(OUT, { recursive: true });
   const text = describeCorpus(PRS);
@@ -178,6 +244,7 @@ const COMMANDS: Record<string, () => void | Promise<void>> = {
   clone: cmdClone,
   collect: cmdCollect,
   describe: cmdDescribe,
+  publish: cmdPublish,
   questions: cmdQuestions,
   synthetic: cmdSynthetic,
   score: cmdScore,
@@ -200,6 +267,7 @@ async function main() {
     console.log('  analyze                   stage 6: stats, CSVs and report');
     console.log('  handlabel-export          export the 50-PR validation worksheet (--n N)');
     console.log('  handlabel-compare         agreement between hand labels and the model');
+    console.log('  publish                   copy publishable artifacts into results/ (refuses on mock runs)');
     console.log('\nEnvironment:');
     console.log('  ANTHROPIC_API_KEY / OPENAI_API_KEY   model credentials (generation / scoring)');
     console.log('  STUDY_MOCK=1                         run offline with the deterministic backend');

@@ -10,5 +10,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "../src/diff-digest.ts"]
+  "include": ["src/**/*.ts"]
 }

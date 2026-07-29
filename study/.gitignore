@@ -1,9 +1,13 @@
-# The corpus is derived data: ~1000 PR directories holding raw diffs, several hundred MB.
-# It is rebuilt deterministically by `study clone && study collect` (seeded sampling), so
-# committing it would bloat the repo to reproduce something a command already reproduces.
+# The working corpus: ~1000 PR directories holding raw diffs, several hundred MB, plus the
+# per-stage intermediates. Derived data — rebuilt deterministically by `study clone` and
+# `study collect` (seeded sampling), so versioning it would bloat the repo to reproduce
+# something a command already reproduces.
 #
-# What SHOULD be published alongside a writeup is the per-PR scores CSV and the report, not
-# the diffs. Copy those out of data/out/ and commit them deliberately.
+# Publishable artifacts do NOT live here. `study publish` copies them into results/, which is
+# committed. See results/README.md.
 data/
+
+# Local clones of the studied repositories, when placed inside the study directory.
+clones/
+
 node_modules/
-package-lock.json

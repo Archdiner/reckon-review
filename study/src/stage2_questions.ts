@@ -22,7 +22,7 @@
 
 import { decompose } from '@reckon/core';
 import type { LlmBackend } from '@reckon/core';
-import { diffDigest } from '../../src/diff-digest.js';
+import { diffDigest } from './vendor/diff-digest.js';
 import { PrReader, assertDerivedFromDiff } from './guard.js';
 import { prDirs, readMeta, writeJson, has, mapLimit, readJson } from './io.js';
 import type { Question } from './types.js';

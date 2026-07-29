@@ -6,10 +6,11 @@
   "description": "How much of a change survives in the record: measuring mechanism-answerability of merged PR records, and whether that record is reproducible from the diff alone.",
   "scripts": {
     "study": "tsx src/cli.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/vendor.test.ts && tsx src/guard.test.ts"
   },
   "dependencies": {
-    "@reckon/core": "file:../vendor/reckon-core-0.5.0.tgz"
+    "@reckon/core": "file:vendor/reckon-core-0.5.0.tgz"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -19,7 +19,7 @@
  */
 
 import type { LlmBackend } from '@reckon/core';
-import { diffDigest } from '../../src/diff-digest.js';
+import { diffDigest } from './vendor/diff-digest.js';
 import { PrReader, assertDerivedFromDiff } from './guard.js';
 import { prDirs, readMeta, writeText, writeJson, has, mapLimit } from './io.js';
 

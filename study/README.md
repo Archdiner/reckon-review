@@ -62,6 +62,60 @@ Two further environment limits shaped the design and must be carried into any wr
 
 ---
 
+## Isolation from the product
+
+`study/` is self-contained and one-directional. **Nothing in the product references it**, and
+it references nothing outside itself.
+
+| Vector | Status |
+| --- | --- |
+| Production Docker image | `Dockerfile` copies only `package.json`, `vendor`, `tsconfig.json`, `src` — `study/` never enters the image |
+| Product build | root `tsconfig.json` is `rootDir: src`, `include: src/**/*.ts`; `npm run build` does not compile the study |
+| Product dependencies | root `package.json` is untouched; the study has its own manifest, lockfile and `node_modules` |
+| Imports into the study | none — verified by grep, and there is nothing for the product to import |
+| Imports out of the study | none — the two files it needs from the product are vendored (see below) |
+
+Because the coupling is zero in both directions, `study/` can be lifted into its own
+repository whenever you want to open-source the pipeline while keeping the Reckon corpus
+private:
+
+```bash
+git subtree split -P study -b study-standalone
+# then push that branch to a new repo; it builds and runs as-is
+```
+
+It is kept in-repo for now for one reason: the study's claim is that it measures the world
+with the instrument Reckon actually ships, and living next to the product is what lets that be
+**checked** rather than asserted.
+
+### Vendored product files
+
+Stage 2 calls the production `decompose()` and both generation stages use the production
+`diffDigest`. Rather than reach across the repo with `../../src/...`, which would weld the
+study to the product's layout, those two artifacts are copied in verbatim:
+
+- `src/vendor/diff-digest.ts` ← `src/diff-digest.ts`
+- `vendor/reckon-core-0.5.0.tgz` ← `vendor/reckon-core-0.5.0.tgz`
+
+Copies drift, and silent drift would make the "same instrument" claim quietly false. So
+`npm test` compares each copy byte-for-byte against its original and **fails** on any
+difference. In an extracted standalone checkout the originals are absent, and the check
+reports them unverifiable rather than failing. Drift is a build failure where it can be
+detected and a documented limitation where it cannot. See `src/vendor/PROVENANCE.md`.
+
+## Data and results
+
+Two directories, deliberately separated:
+
+- **`data/` — gitignored.** The working corpus: ~1000 PR folders of raw diffs, plus per-stage
+  intermediates. Derived data, rebuilt deterministically by `study clone && study collect`
+  (seeded sampling), far too large to version.
+- **`results/` — committed.** Everything needed to re-check a claim: scores, report, corpus
+  summary, and a `manifest.json` recording the commit and models. Written only by
+  `study publish`, which **refuses to run on a mock backend** so the directory can never fill
+  with hash values that look like findings. See `results/README.md` for the schema and query
+  recipes.
+
 ## The three questions
 
 **A. The gap.** Generate mechanism questions from the code change alone, then check whether
