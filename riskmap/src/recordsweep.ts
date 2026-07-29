@@ -103,24 +103,29 @@ async function isGitRepo(dir: string): Promise<boolean> {
 }
 
 /**
- * One repository, end to end. Returns the row and whether this call created the clone (so the
- * caller knows whether deleting it is its business).
+ * One repository, end to end.
+ *
+ * THE CLONE PATH IS REPORTED THROUGH A CALLBACK, NOT THE RETURN VALUE, and that is a bug fix rather
+ * than a style choice. It used to come back in the resolved object, so when scoring threw — as it did
+ * on tailwindcss — this function never returned, the caller's `created` variable stayed null, and its
+ * cleanup skipped a clone that was sitting on disk. Harmless at 31 MB; not harmless with pytorch,
+ * kubernetes and vscode still to come and a 5 GB floor guarding the next clone. The callback fires the
+ * moment the directory exists, so the caller can delete it on any exit path.
  */
 async function scoreOne(
   spec: RepoSpec,
   opts: RecordSweepOpts,
-  log: (m: string) => void
-): Promise<{ row: RecordSweepRow; map: RecordMap | null; createdClone: string | null }> {
+  log: (m: string) => void,
+  onCloneCreated: (dir: string) => void
+): Promise<{ row: RecordSweepRow; map: RecordMap | null }> {
   const started = Date.now();
   const dir = join(opts.clonesDir, spec.dirName);
-  let createdClone: string | null = null;
 
   if (!(await isGitRepo(dir))) {
     if (existsSync(dir)) {
       return {
         row: { repo: spec.ownerName ?? spec.spec, spec: spec.spec, status: 'failed', reason: `${dir} exists and is not a git repository` },
         map: null,
-        createdClone: null,
       };
     }
     const free = await freeBytes(opts.clonesDir);
@@ -130,6 +135,10 @@ async function scoreOne(
           `${spec.spec}; repositories already scored are on disk and will be skipped on the next run.`
       );
     }
+    // REGISTERED BEFORE THE ATTEMPT, not after it. A clone killed by the timeout can leave a partial
+    // directory behind, and the failure path returns without ever reaching an "after" callback. The
+    // caller deletes with `force`, so registering a path that never materialises costs nothing.
+    onCloneCreated(dir);
     log(`cloning ${spec.url}`);
     try {
       await exec('git', ['clone', `--shallow-since=${CLONE_SINCE}`, spec.url, dir], {
@@ -141,7 +150,6 @@ async function scoreOne(
       return {
         row: { repo: spec.ownerName ?? spec.spec, spec: spec.spec, status: 'failed', reason: `clone failed: ${why}` },
         map: null,
-        createdClone: null,
       };
     }
     if (!(await isGitRepo(dir))) {
@@ -150,10 +158,8 @@ async function scoreOne(
       return {
         row: { repo: spec.ownerName ?? spec.spec, spec: spec.spec, status: 'skipped-empty', reason: 'clone produced no history in the window' },
         map: null,
-        createdClone: dir,
       };
     }
-    createdClone = dir;
   } else {
     log(`reusing existing clone at ${dir}`);
   }
@@ -181,7 +187,6 @@ async function scoreOne(
         reason: `body density ${(map.squash.substantiveBodyShare * 100).toFixed(1)}% is below the floor`,
       },
       map,
-      createdClone,
     };
   }
 
@@ -201,7 +206,6 @@ async function scoreOne(
       seconds,
     },
     map,
-    createdClone,
   };
 }
 
@@ -241,8 +245,12 @@ export async function runRecordSweep(opts: RecordSweepOpts): Promise<RecordSweep
     log(`[${i + 1}/${specs.length}] ${name}`);
     let created: string | null = null;
     try {
-      const r = await scoreOne(spec, opts, log);
-      created = r.createdClone;
+      // The callback is the ONLY source for this. Re-reading it from the resolved value as well would
+      // restore the two-sources-of-truth that caused the leak: the resolved value does not exist on the
+      // path where scoring throws, which is precisely the path that leaked a clone.
+      const r = await scoreOne(spec, opts, log, (dir) => {
+        created = dir;
+      });
       rows.push(r.row);
       if (r.map) writeFileSync(jsonPath, `${JSON.stringify(r.map, null, 2)}\n`);
       log(
