@@ -113,6 +113,16 @@ function synthetic(n: number): PosterData {
     regionRepo: 'x/y',
     regionQuestions: 1234,
     ablation: Array.from({ length: 50 }, (_, i) => ({ full: ((i * 17) % 90) / 100, subject: ((i * 7) % 40) / 100 })),
+    repoAreas: Array.from({ length: 21 }, (_, i) => ({
+      repo: `owner${i}/project${i}`,
+      coverage: i >= 19 ? null : 0.05 + i * 0.03,
+      questions: i >= 19 ? 0 : 400 + i * 20,
+      // Ragged on purpose, with a thin cell every few rows: the panel must handle both.
+      areas: i >= 19 ? [] : Array.from({ length: 8 + (i % 13) }, (_, j) => (j % 7 === 3 ? null : ((j * 11) % 60) / 100)),
+      areasNotScored: i % 4,
+      refused: i >= 19,
+      bodyDensity: i >= 19 ? 0.04 : 0.5,
+    })),
     gate: Array.from({ length: 24 }, (_, i) => ({
       repo: `owner${i}/project${i}`,
       verdict: i < 20 ? 'pass' : i < 21 ? 'weak' : 'fail',
@@ -175,18 +185,44 @@ console.log('\nthe poster never names a person and never overclaims');
   ok('the separation guard is stated', /never sees the code/i.test(svg));
 }
 
+console.log('\nthe repository matrix draws every row and hides nothing');
+{
+  const d = synthetic(300);
+  const svg = renderPoster(d);
+  ok('the panel is drawn', svg.includes('the same measurement, every repository'));
+  for (const r of d.repoAreas) {
+    ok(`row present: ${r.repo}`, svg.includes(r.repo));
+  }
+  ok('a refused repository says why instead of showing colour', /refused — 4% of its commits/.test(svg));
+  ok('thin cells are hatched, not given a ramp colour', svg.includes('url(#thinHatch)'));
+  ok('the hatch pattern is defined', svg.includes('<pattern id="thinHatch"'));
+  ok('the pooled figure and the between-repository range are both printed', /Pooled .*Between repositories/.test(svg));
+  ok('unscored areas are disclosed', />\+\d</.test(svg));
+  ok('says a cell is one directory area', /One cell is one directory area/.test(svg));
+  // A refused repository has no coverage, so it must never contribute to the pool.
+  const scored = d.repoAreas.filter((r) => !r.refused);
+  const pooled = scored.reduce((a, r) => a + (r.coverage ?? 0) * r.questions, 0) / scored.reduce((a, r) => a + r.questions, 0);
+  ok(
+    `the pooled figure excludes refusals (${(pooled * 100).toFixed(1)}%)`,
+    svg.includes(`Pooled ${(pooled * 100).toFixed(1)}%`),
+    svg.split('Pooled ')[1]?.slice(0, 40) ?? 'no pooled line'
+  );
+}
+
 console.log('\nmissing inputs are reported rather than filled in');
 {
   const d = synthetic(50);
   d.ablation = [];
   d.regions = [];
   d.gate = [];
+  d.repoAreas = [];
   d.missing = ['some/file.csv'];
   const svg = renderPoster(d);
   ok('the omission is printed', svg.includes('Omitted for want of data'));
   ok('no ablation panel is drawn', !svg.includes('the subject line is not the record'));
   ok('no region panel is drawn', !svg.includes('inside one repository'));
   ok('no gate panel is drawn', !svg.includes('where the record can be measured'));
+  ok('no matrix panel is drawn', !svg.includes('the same measurement, every repository'));
   ok('the poster still renders', /viewBox="0 0 [\d.]+ [\d.]+"/.test(svg));
 }
 

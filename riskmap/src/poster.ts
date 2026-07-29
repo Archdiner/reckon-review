@@ -51,6 +51,7 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { LIGHT_RAMP, relativeLuminance, contrastRatio, esc } from './treemap.js';
+import { loadSweepMaps } from './recordsweep.js';
 
 // ── PALETTE ───────────────────────────────────────────────────────────────────────────────────
 
@@ -110,7 +111,17 @@ export const ditherOver = (band: string): string => blend('#eaf3f7', band, MAX_D
  * `LIGHT_RAMP` is the shared 10-step brand ramp; the poster takes seven samples of it so a legend
  * can carry seven readable swatches, and reserves index 0 for exactly-zero.
  */
-export const POSTER_BINS = 7;
+/**
+ * TEN, NOT SEVEN.
+ *
+ * Seven bins put every measured directory area into four of them: area coverage on real repositories
+ * runs about 2% to 61%, so an absolute scale over [0,1] spent three of its seven steps on a range the
+ * area data never reaches, and the matrix panel came out nearly one colour. Ten steps double the
+ * resolution where the data actually lives without rescaling to a percentile — which would have been
+ * the other fix, and the wrong one: a cell has to mean the same share on every panel of the poster, or
+ * the mosaics and the matrix stop being readable against each other.
+ */
+export const POSTER_BINS = 10;
 export const POSTER_RAMP: string[] = Array.from({ length: POSTER_BINS }, (_, i) => {
   const t = i / (POSTER_BINS - 1);
   return LIGHT_RAMP[Math.round(t * (LIGHT_RAMP.length - 1))]!;
@@ -186,6 +197,20 @@ export interface AblationRow {
   subject: number;
 }
 
+/** One repository's record map, reduced to what the matrix panel draws. */
+export interface RepoAreas {
+  repo: string;
+  /** Question-weighted coverage across this repository's scored areas. Null when refused. */
+  coverage: number | null;
+  questions: number;
+  /** Coverage of each scored area, ascending. Empty when the gate refused the repository. */
+  areas: (number | null)[];
+  /** Areas that exist but fell outside the sampling cap, so were never scored. */
+  areasNotScored: number;
+  refused: boolean;
+  bodyDensity: number;
+}
+
 export interface PosterData {
   prs: PrRow[];
   regions: RegionRow[];
@@ -194,6 +219,8 @@ export interface PosterData {
   regionQuestions: number;
   ablation: AblationRow[];
   gate: GateRow[];
+  /** Every repository a record sweep has measured. Empty until a sweep has run. */
+  repoAreas: RepoAreas[];
   missing: string[];
 }
 
@@ -289,6 +316,8 @@ export interface LoadOpts {
   studyResults: string;
   recordMapJson: string;
   gateJson: string;
+  /** A record-sweep directory (expects `repos/*.json`). Absent until a sweep has run. */
+  sweepDir?: string;
 }
 
 /** Load everything, recording what was absent instead of substituting for it. */
@@ -319,7 +348,23 @@ export function loadPosterData(opts: LoadOpts): PosterData {
     regionQuestions = r.questions;
   } else missing.push(opts.recordMapJson);
 
-  return { prs, regions, regionRepo, regionQuestions, ablation, gate, missing };
+  // Every repository a sweep has measured. Reduced here rather than in the renderer so the panel
+  // cannot accidentally read a field the pool does not define for a refused repository.
+  const repoAreas: RepoAreas[] = (opts.sweepDir ? loadSweepMaps(opts.sweepDir) : []).map((m) => ({
+    repo: m.repo,
+    coverage: m.overall ? m.overall.rate : null,
+    questions: m.overall ? m.overall.total : 0,
+    // Ascending, and thin estimates are carried as null rather than dropped: a cell the sampling
+    // could not pin down is a different thing from an area that scored low, and the panel hatches it.
+    areas: m.cells
+      .map((c) => (c.greyReason === null ? c.coverage : null))
+      .sort((a, b) => (a ?? 2) - (b ?? 2)),
+    areasNotScored: m.regionsDropped ?? 0,
+    refused: m.refused,
+    bodyDensity: m.squash.substantiveBodyShare,
+  }));
+
+  return { prs, regions, regionRepo, regionQuestions, ablation, gate, repoAreas, missing };
 }
 
 // ── SMALL STATISTICS, COMPUTED HERE SO NOTHING IS TRANSCRIBED ────────────────────────────────
@@ -447,7 +492,7 @@ function mosaic(values: (number | null)[], plan: MosaicPlan, gap = 1): string {
 /** A legend for the coverage ramp, drawn rather than described. */
 function coverageLegend(x: number, y: number, w: number): string {
   const parts: string[] = [];
-  const sw = Math.min(34, (w - 10) / POSTER_BINS);
+  const sw = Math.min(34, (w - 10) / POSTER_BINS - 3);
   parts.push(text(x, y - 10, 'share of the mechanism the record explains', 'lbl'));
   for (let i = 0; i < POSTER_BINS; i++) {
     parts.push(rect(x + i * (sw + 3), y, sw, 13, POSTER_RAMP[i]!, ' stroke="#c9d6de" stroke-width="0.5"'));
@@ -658,6 +703,129 @@ function ablationPanel(d: PosterData, x: number, y: number, w: number, h: number
   );
   parts.push('</g>');
   return { svg: parts.join(''), height: ly + 70 };
+}
+
+/**
+ * THE MATRIX — every repository measured, every area inside it, one cell each.
+ *
+ * ── WHAT IT ANSWERS ───────────────────────────────────────────────────────────────────────
+ *
+ * "That is grafana, not us." A one-repository measurement has no reply to that, and for most of this
+ * project's life every coverage number came from one repository. This panel is the reply: the same
+ * questions, the same rubric, the same sampling depth, across every repository the sweep reached.
+ *
+ * ── WHY A MATRIX AND NOT TWENTY-ONE BARS ─────────────────────────────────────────────────
+ *
+ * A bar per repository shows between-repository variation and hides the thing that actually decides
+ * whether the measurement is useful: the spread WITHIN a repository. If every area of a project sat at
+ * its project mean, a project-level number would be sufficient and there would be no reason to build a
+ * per-area map at all. One row of cells per repository shows both at once — the row's overall position
+ * and how far its own areas scatter — and it is the same square-is-a-unit encoding as the corpus
+ * panels above, so nobody has to learn a second grammar to read it.
+ *
+ * ── THE TWO HONESTY CONSTRAINTS ──────────────────────────────────────────────────────────
+ *
+ * A THIN CELL IS HATCHED, NOT COLOURED. An area whose interval is too wide to read is a different
+ * thing from an area that scored low, and colouring it would assert a precision the sample does not
+ * have. Rows are also ragged on purpose: repositories have different numbers of scorable areas, and
+ * padding them to a rectangle would invent cells.
+ *
+ * A REFUSED REPOSITORY GETS A ROW ANYWAY. It squashes to its title often enough that any coverage
+ * number would be measuring the merge button, so the row says so instead of drawing colour. Leaving
+ * refusals out of the picture would make the instrument look universal, which is the specific
+ * dishonesty the gate exists to prevent.
+ */
+function matrixPanel(d: PosterData, x: number, y: number, w: number): PanelResult {
+  if (d.repoAreas.length === 0) return { svg: '', height: 0 };
+  const rows2 = [...d.repoAreas].sort((a, b) => {
+    // Refused repositories sink to the bottom: they have no value to sort on, and interleaving them
+    // with measured ones would imply a position they do not have.
+    if (a.refused !== b.refused) return a.refused ? 1 : -1;
+    return (b.coverage ?? -1) - (a.coverage ?? -1);
+  });
+  const scored = rows2.filter((r) => !r.refused);
+  const maxAreas = Math.max(1, ...rows2.map((r) => r.areas.length));
+
+  const parts: string[] = [];
+  parts.push(`<g transform="translate(${f(x)},${f(y)})">`);
+  parts.push(text(0, 0, 'the same measurement, every repository', 'panelTitle'));
+  const pooledExplicit = scored.reduce((a, r) => a + (r.coverage ?? 0) * r.questions, 0);
+  const pooledQuestions = scored.reduce((a, r) => a + r.questions, 0);
+  parts.push(
+    text(
+      0,
+      19,
+      `${scored.length} repositories, ${pooledQuestions.toLocaleString('en-US')} mechanism questions asked of their commits` +
+        (rows2.length > scored.length ? `, ${rows2.length - scored.length} refused` : ''),
+      'panelSub'
+    )
+  );
+
+  const labelW = 206;
+  const rightW = 96;
+  const gridW = w - labelW - rightW;
+  const cell = Math.min(20, gridW / maxAreas);
+  const rowH = Math.max(15, cell + 3);
+  const top = 46;
+
+  rows2.forEach((r, i) => {
+    const by = top + i * rowH;
+    parts.push(text(0, by + cell * 0.72, r.repo, 'repoName'));
+    if (r.refused) {
+      parts.push(rect(labelW, by, gridW, Math.max(6, cell - 3), '#dbe6ec'));
+      parts.push(
+        text(
+          labelW + 8,
+          by + cell * 0.72,
+          `refused — ${(r.bodyDensity * 100).toFixed(0)}% of its commits carry a body, below the floor`,
+          'tick'
+        )
+      );
+      return;
+    }
+    r.areas.forEach((cov, j) => {
+      const cx = labelW + j * cell;
+      if (cov === null) {
+        // Hatched, not coloured: too thin to read rather than low.
+        parts.push(rect(cx, by, Math.max(2, cell - 2), Math.max(2, cell - 2), 'url(#thinHatch)'));
+        return;
+      }
+      parts.push(rect(cx, by, Math.max(2, cell - 2), Math.max(2, cell - 2), colourFor(cov)));
+    });
+    parts.push(
+      text(labelW + gridW + 10, by + cell * 0.72, pctLabel(r.coverage ?? 0), 'tickStrong')
+    );
+    if (r.areasNotScored > 0) {
+      parts.push(
+        text(labelW + gridW + 52, by + cell * 0.72, `+${r.areasNotScored}`, 'tick')
+      );
+    }
+  });
+
+  const ly = top + rows2.length * rowH + 16;
+  if (pooledQuestions > 0) {
+    const rates = scored.map((r) => r.coverage ?? 0);
+    parts.push(
+      text(
+        0,
+        ly,
+        `Pooled ${pctLabel(pooledExplicit / pooledQuestions, 1)}. Between repositories: ` +
+          `${pctLabel(Math.min(...rates))} to ${pctLabel(Math.max(...rates))}.`,
+        'tickStrong'
+      )
+    );
+  }
+  parts.push(
+    text(
+      0,
+      ly + 17,
+      'One cell is one directory area, sorted low to high within its repository. Hatched cells were sampled ' +
+        'too thinly to read. "+N" is areas that exist but were outside the sampling budget.',
+      'tick'
+    )
+  );
+  parts.push('</g>');
+  return { svg: parts.join(''), height: ly + 30 };
 }
 
 /**
@@ -1144,6 +1312,19 @@ export function renderPoster(d: PosterData, opts: PosterOpts = {}): string {
     y += 44;
   }
 
+  // ── ROW: THE MATRIX, FULL WIDTH ──────────────────────────────────────────────────────────
+  // Directly under the gate: that panel says which repositories can be measured at all, this one says
+  // what they measured. Reading them together is the point.
+  const matrix = matrixPanel(d, M, y, inner);
+  if (matrix.height > 0) {
+    body.push(matrix.svg);
+    y += matrix.height + 46;
+    body.push(
+      `<line x1="${f(M)}" y1="${f(y)}" x2="${f(W - M)}" y2="${f(y)}" stroke="#c6d8e1" stroke-width="1"/>`
+    );
+    y += 44;
+  }
+
   // ── ROW: LENGTH | REGIONS ────────────────────────────────────────────────────────────────
   const rowH = 300;
   const len = lengthPanel(d, M, y, halfW, rowH);
@@ -1217,7 +1398,15 @@ export function renderPoster(d: PosterData, opts: PosterOpts = {}): string {
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(W)} ${f(H)}" width="${f(W)}" height="${f(H)}" role="img" aria-label="What the record does not say: record coverage across ${d.prs.length} merged pull requests and ${d.regions.length} directory areas">`,
-    `<defs><clipPath id="heroClip"><rect x="0" y="0" width="${f(W)}" height="${f(heroH)}"/></clipPath></defs>`,
+    '<defs>' +
+      `<clipPath id="heroClip"><rect x="0" y="0" width="${f(W)}" height="${f(heroH)}"/></clipPath>` +
+      // The hatch for an estimate too thin to colour. A pattern rather than a pale fill, because a
+      // pale fill is a POSITION on the coverage ramp and would read as a measured high value.
+      '<pattern id="thinHatch" width="5" height="5" patternUnits="userSpaceOnUse">' +
+      '<rect width="5" height="5" fill="#c9d6de"/>' +
+      '<path d="M0 5 L5 0" stroke="#8fa6b3" stroke-width="1.4"/>' +
+      '</pattern>' +
+      '</defs>',
     `<style>${style}</style>`,
     rect(0, 0, W, H, PAGE),
     body.join(''),

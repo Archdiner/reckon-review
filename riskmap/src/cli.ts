@@ -523,7 +523,8 @@ async function cmdPoster() {
   );
   const gateJson = resolve(arg('gate-json', join(ROOT, 'out', 'gate', 'gate.json'))!);
 
-  const data = loadPosterData({ studyResults, recordMapJson, gateJson });
+  const sweepDir = resolve(arg('sweep', join(ROOT, 'out', 'recordsweep'))!);
+  const data = loadPosterData({ studyResults, recordMapJson, gateJson, sweepDir });
   for (const m of data.missing) console.error(`  MISSING, panel omitted: ${m}`);
 
   const svg = renderPoster(data, {
@@ -536,8 +537,8 @@ async function cmdPoster() {
   const file = join(outDir, 'record-poster.svg');
   writeFileSync(file, svg);
   console.error(
-    `${data.prs.length} pull requests, ${data.regions.length} regions, ${data.gate.length} repositories, ` +
-      `${data.ablation.length} ablation pairs`
+    `${data.prs.length} pull requests, ${data.regions.length} regions, ${data.gate.length} gate rows, ` +
+      `${data.ablation.length} ablation pairs, ${data.repoAreas.length} repositories measured`
   );
   console.error(`wrote ${file}`);
 }
