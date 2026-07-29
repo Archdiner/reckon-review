@@ -155,3 +155,74 @@ console.log('\nthe leak guard still fires on a real leak, and only sets aside un
   );
   ok('a record quoting its own diff is exactly the tailwindcss case', trips('build: update\n\ndiff --git a/./main.css b/./pr.css'));
 }
+
+// ── THE VARIANCE DECOMPOSITION ───────────────────────────────────────────────────────────────
+//
+// This is the number that says whether a per-area map earns its keep, so its two failure modes are
+// worth pinning: crediting sampling noise as real within-repository spread (which would understate the
+// between share), and letting a thin cell into the decomposition at all.
+console.log('\nthe variance split separates repositories from areas, and noise from both');
+{
+  const { varianceSplit } = await import('./recordsweep.js');
+  const mk = (repo: string, values: (number | null)[], questions = 50): unknown => ({
+    repo,
+    headSha: 'x',
+    asOf: 0,
+    windowMonths: 24,
+    recentMonths: 1,
+    commitsAnalysed: 100,
+    squash: { availability: 'available', substantiveBodyShare: 0.5, sampled: 200, note: '' },
+    refused: false,
+    cells: values.map((v, i) => ({
+      path: `a${i}`,
+      weight: 100,
+      coverage: v,
+      ciLo: 0,
+      ciHi: 1,
+      ciHalfWidth: 0.1,
+      scoredCommits: 15,
+      questions,
+      active: true,
+      percentile: null,
+      greyReason: v === null ? 'interval-too-wide' : null,
+    })),
+    overall: { explicit: 1, total: questions * values.length, rate: 0.3 },
+    calibration: null,
+    generatedAtUtc: '',
+  });
+
+  ok('needs at least two repositories', varianceSplit([mk('a/a', [0.1, 0.2])] as never) === null);
+
+  {
+    // Two repositories, identical spread inside each, means far apart: almost all variance is between.
+    const s = varianceSplit([mk('a/a', [0.1, 0.1, 0.1]), mk('b/b', [0.6, 0.6, 0.6])] as never)!;
+    ok(`separated means give a high between share (${(s.iccCorrected * 100).toFixed(0)}%)`, s.iccCorrected > 0.9);
+    ok('and both repositories are counted', s.repos === 2 && s.cells === 6, `${s.repos}/${s.cells}`);
+  }
+  {
+    // Same means, wide spread inside each: nothing is between.
+    const s = varianceSplit([mk('a/a', [0.1, 0.5, 0.9]), mk('b/b', [0.1, 0.5, 0.9])] as never)!;
+    ok(`identical spreads give a near-zero between share (${(s.iccCorrected * 100).toFixed(0)}%)`, s.iccCorrected < 0.05);
+  }
+  {
+    // A thin cell must not contribute. Adding one with an absurd value must not move the answer.
+    const clean = varianceSplit([mk('a/a', [0.2, 0.3]), mk('b/b', [0.5, 0.6])] as never)!;
+    const withThin = varianceSplit([mk('a/a', [0.2, 0.3, null]), mk('b/b', [0.5, 0.6])] as never)!;
+    ok('a thin cell is excluded from the decomposition', clean.cells === withThin.cells, `${clean.cells} vs ${withThin.cells}`);
+    ok('and does not move the between share', Math.abs(clean.iccCorrected - withThin.iccCorrected) < 1e-9);
+  }
+  {
+    // The noise correction must bite: at 10 questions per cell the sampling variance is large, so the
+    // corrected between share must exceed the raw one on the same data.
+    const noisy = varianceSplit([mk('a/a', [0.2, 0.4], 10), mk('b/b', [0.5, 0.7], 10)] as never)!;
+    ok('the correction raises the between share', noisy.iccCorrected > noisy.iccRaw, `${noisy.iccCorrected} vs ${noisy.iccRaw}`);
+    ok('sampling variance is reported, not just applied', noisy.meanSamplingVar > 0);
+    ok('corrected within variance never goes negative', noisy.withinVarCorrected >= 0);
+  }
+}
+
+console.log('');
+if (failures > 0) {
+  console.log(`${failures} test(s) failed after the appended blocks`);
+  process.exit(1);
+}

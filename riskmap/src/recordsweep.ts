@@ -294,7 +294,88 @@ export function loadSweepMaps(outDir: string): RecordMap[] {
   return out;
 }
 
-export function formatRecordSweepReport(rows: RecordSweepRow[]): string {
+/**
+ * BETWEEN-REPOSITORY versus WITHIN-REPOSITORY variance, with the sampling noise taken out.
+ *
+ * ── THE QUESTION THIS ANSWERS ─────────────────────────────────────────────────────────────
+ *
+ * Is a per-area map worth building at all? If almost all the variation in coverage were BETWEEN
+ * repositories, then one number per repository would carry the same information and the per-area map
+ * would be decoration. If most of it is WITHIN a repository, a project-level number averages away the
+ * thing a maintainer would act on. That is a measurable question and this is the measurement.
+ *
+ * ── WHY THE RAW SPLIT WOULD BE WRONG ──────────────────────────────────────────────────────
+ *
+ * Each area's coverage is an estimate from a few dozen sampled questions, so the observed spread
+ * within a repository is real spread PLUS binomial sampling noise. Reporting the raw within-group
+ * variance would credit that noise as genuine variation and understate how much of the signal sits
+ * between repositories. So the expected sampling variance — mean of p(1-p)/n over the cells — is
+ * subtracted from the within component, which is the standard correction, and both the raw and
+ * corrected figures are printed so the size of the correction is visible rather than buried.
+ *
+ * Only USABLE cells count: a cell whose interval was too wide to colour has no business contributing
+ * to a variance decomposition. Refused repositories contribute nothing, having no estimates at all.
+ */
+export interface VarianceSplit {
+  repos: number;
+  cells: number;
+  betweenVar: number;
+  withinVarRaw: number;
+  /** Within-repository variance after subtracting the expected binomial sampling variance. */
+  withinVarCorrected: number;
+  meanSamplingVar: number;
+  /** Share of true variance sitting between repositories, in [0,1]. */
+  iccCorrected: number;
+  iccRaw: number;
+}
+
+export function varianceSplit(maps: RecordMap[]): VarianceSplit | null {
+  const groups: { values: number[]; samplingVars: number[] }[] = [];
+  for (const m of maps) {
+    if (m.refused) continue;
+    const values: number[] = [];
+    const samplingVars: number[] = [];
+    for (const c of m.cells) {
+      if (c.greyReason !== null || c.coverage === null || c.questions <= 1) continue;
+      values.push(c.coverage);
+      samplingVars.push((c.coverage * (1 - c.coverage)) / c.questions);
+    }
+    if (values.length >= 2) groups.push({ values, samplingVars });
+  }
+  if (groups.length < 2) return null;
+
+  const all = groups.flatMap((g) => g.values);
+  const grand = all.reduce((a, b) => a + b, 0) / all.length;
+  const groupMeans = groups.map((g) => g.values.reduce((a, b) => a + b, 0) / g.values.length);
+
+  // Between: variance of the group means, weighted by group size, as a share of the total.
+  let between = 0;
+  for (const [i, g] of groups.entries()) between += g.values.length * (groupMeans[i]! - grand) ** 2;
+  between /= all.length;
+
+  let within = 0;
+  for (const [i, g] of groups.entries()) {
+    for (const v of g.values) within += (v - groupMeans[i]!) ** 2;
+  }
+  within /= all.length;
+
+  const meanSamplingVar =
+    groups.flatMap((g) => g.samplingVars).reduce((a, b) => a + b, 0) / all.length;
+  const withinCorrected = Math.max(0, within - meanSamplingVar);
+
+  return {
+    repos: groups.length,
+    cells: all.length,
+    betweenVar: between,
+    withinVarRaw: within,
+    withinVarCorrected: withinCorrected,
+    meanSamplingVar,
+    iccCorrected: between + withinCorrected > 0 ? between / (between + withinCorrected) : 0,
+    iccRaw: between + within > 0 ? between / (between + within) : 0,
+  };
+}
+
+export function formatRecordSweepReport(rows: RecordSweepRow[], maps: RecordMap[] = []): string {
   const L: string[] = [];
   const scored = rows.filter((r) => r.status === 'scored');
   const refused = rows.filter((r) => r.status === 'refused');
@@ -331,6 +412,46 @@ export function formatRecordSweepReport(rows: RecordSweepRow[]): string {
       `Between-repository spread: ${(rates[0]! * 100).toFixed(1)}% to ${(rates[rates.length - 1]! * 100).toFixed(1)}%. ` +
         'That range is the reason a single-repository number could not be generalised, and the reason ' +
         'this sweep exists.'
+    );
+    L.push('');
+  }
+
+  const split = varianceSplit(maps);
+  if (split) {
+    L.push('## Is a per-area map worth building, or would one number per repository do?');
+    L.push('');
+    L.push(
+      `Over ${split.cells} usable area estimates in ${split.repos} repositories, ` +
+        `**${(split.iccCorrected * 100).toFixed(0)}% of the true variance sits BETWEEN repositories** and ` +
+        `${(100 - split.iccCorrected * 100).toFixed(0)}% WITHIN them.`
+    );
+    L.push('');
+    L.push('| component | variance | as SD |');
+    L.push('| --- | --- | --- |');
+    L.push(`| between repositories | ${split.betweenVar.toFixed(5)} | ${Math.sqrt(split.betweenVar).toFixed(3)} |`);
+    L.push(
+      `| within repositories, raw | ${split.withinVarRaw.toFixed(5)} | ${Math.sqrt(split.withinVarRaw).toFixed(3)} |`
+    );
+    L.push(
+      `| — of which sampling noise | ${split.meanSamplingVar.toFixed(5)} | ${Math.sqrt(split.meanSamplingVar).toFixed(3)} |`
+    );
+    L.push(
+      `| within repositories, corrected | ${split.withinVarCorrected.toFixed(5)} | ${Math.sqrt(split.withinVarCorrected).toFixed(3)} |`
+    );
+    L.push('');
+    L.push(
+      'Each area estimate carries binomial sampling error, so the raw within-repository spread is real ' +
+        'spread plus noise. The expected sampling variance is subtracted, which is the standard ' +
+        'correction; the uncorrected share would read ' +
+        `${(split.iccRaw * 100).toFixed(0)}% between rather than ${(split.iccCorrected * 100).toFixed(0)}%, ` +
+        'and both are printed so the size of the correction is visible.'
+    );
+    L.push('');
+    L.push(
+      'Read it as the answer to a design question rather than a finding about software: the larger the ' +
+        'within-repository share, the more a project-level number averages away what a maintainer would ' +
+        'act on, and the more a per-area map earns its keep. Only usable cells count — an estimate too ' +
+        'thin to colour has no business in a variance decomposition.'
     );
     L.push('');
   }

@@ -32,7 +32,7 @@ import type { LlmBackend } from '@reckon/core';
 import { LeakageError } from './coverage.js';
 import { loadCalibration, midrankPercentile } from './calibration.js';
 import { loadPosterData, renderPoster } from './poster.js';
-import { runRecordSweep, formatRecordSweepReport } from './recordsweep.js';
+import { runRecordSweep, formatRecordSweepReport, loadSweepMaps } from './recordsweep.js';
 import { buildDataPack } from './datapack.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -580,7 +580,9 @@ async function cmdRecordSweep() {
     onProgress: (m) => console.error(m),
   });
 
-  writeFileSync(join(outDir, 'record-sweep.md'), formatRecordSweepReport(rows));
+  // The per-repository maps are re-read from disk so the report's variance decomposition covers every
+  // repository the sweep has ever scored, including ones this invocation skipped as already done.
+  writeFileSync(join(outDir, 'record-sweep.md'), formatRecordSweepReport(rows, loadSweepMaps(outDir)));
   const scored = rows.filter((r) => r.status === 'scored');
   console.error('');
   console.error(
