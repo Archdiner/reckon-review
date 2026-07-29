@@ -29,6 +29,7 @@ import { generateParaphrase } from './stage3b_paraphrase.js';
 import { scoreCorpus, type ScoreMode } from './stage4_score.js';
 import { scoreThreeArms } from './stage4b_score3.js';
 import { loadThreeArm, formatThreeArmReport, writeThreeArmCsv } from './analyze3.js';
+import { decomposeBySize } from './decompose_size.js';
 import { analyze, writeCsvs, formatReport } from './stage6_analyze.js';
 import { exportWorksheet, compareLabels } from './handlabel.js';
 import { describeCorpus } from './describe.js';
@@ -157,6 +158,14 @@ function cmdAnalyze3() {
   writeFileSync(join(OUT, 'three-arm-scores.csv'), writeThreeArmCsv(rows));
   console.log(report);
   console.log(`\nWrote ${join(OUT, 'three-arm-report.md')}, three-arm-scores.csv`);
+}
+
+/** Decomposition of the agent/human contrast, holding diff size fixed. */
+function cmdDecompose() {
+  mkdirSync(OUT, { recursive: true });
+  const text = decomposeBySize(PRS);
+  writeFileSync(join(OUT, 'size-decomposition.md'), `${text}\n`);
+  console.log(text);
 }
 
 function cmdAnalyze() {
@@ -298,6 +307,7 @@ const COMMANDS: Record<string, () => void | Promise<void>> = {
   score: cmdScore,
   score3: cmdScore3,
   analyze3: cmdAnalyze3,
+  decompose: cmdDecompose,
   analyze: cmdAnalyze,
   'handlabel-export': cmdHandlabelExport,
   'handlabel-compare': cmdHandlabelCompare,
@@ -318,6 +328,7 @@ async function main() {
     console.log('  score3                    stage 4b: real/synthetic/paraphrase scored independently (--force)');
     console.log('  analyze                   stage 6: stats, CSVs and report');
     console.log('  analyze3                  stage 6b: three-arm report — is the gap content or form?');
+    console.log('  decompose                 agent/human contrast with diff size held fixed');
     console.log('  handlabel-export          export the 50-PR validation worksheet (--n N)');
     console.log('  handlabel-compare         agreement between hand labels and the model');
     console.log('  publish                   copy publishable artifacts into results/ (refuses on mock runs)');
