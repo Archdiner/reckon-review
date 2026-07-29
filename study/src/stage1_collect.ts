@@ -268,6 +268,7 @@ export async function collect(opts: CollectOpts): Promise<CollectReport> {
         filesChanged: outcome.files.length,
         sizeBucket: bucketOf(outcome.changedLines),
         emptyBody: body.length === 0,
+        rawBodyEmpty: c.body.trim().length === 0,
         recordDiffSharedShingles: 0,
         recordShingles: 0,
       };

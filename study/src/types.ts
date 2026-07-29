@@ -48,8 +48,21 @@ export interface PrMeta {
   filesChanged: number;
   /** Bucketed size, used for agent/human matching. */
   sizeBucket: SizeBucket;
-  /** True when the PR body was empty. Kept as data, never used to filter. */
+  /**
+   * True when the record carries no prose — the surviving body is empty after attribution
+   * trailers are stripped. Kept as data, never used to filter.
+   */
   emptyBody: boolean;
+  /**
+   * True when the commit body was ALREADY empty in git, before any stripping.
+   *
+   * The two differ for a body consisting only of `Co-authored-by:` / `Signed-off-by:` lines,
+   * and the difference is not symmetric between the arms: agent PRs frequently carry an
+   * attribution trailer and nothing else, so stripping turns them from "not raw-empty" into
+   * "no prose". Recording both means the empty-record comparison can be read either way
+   * instead of resting on one debatable convention.
+   */
+  rawBodyEmpty: boolean;
   /**
    * Prose the written record shares verbatim with the diff, in 8-word shingles, and the
    * record's total shingle count. High overlap means the description restates text the

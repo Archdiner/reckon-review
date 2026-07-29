@@ -60,11 +60,19 @@ export function describeCorpus(root: string): string {
 
   L.push('## By repository');
   L.push('');
-  L.push('| repo | total | agent | human |');
-  L.push('| --- | --- | --- | --- |');
+  L.push('Empty-record rates are shown per repo per arm because that is what separates an');
+  L.push('authoring difference from a merge-tooling artifact: within one repo the squash');
+  L.push('setting is the same for both arms, so a configuration that discarded descriptions');
+  L.push('would discard them equally.');
+  L.push('');
+  L.push('| repo | total | agent | human | agent empty | human empty |');
+  L.push('| --- | --- | --- | --- | --- | --- |');
   for (const [repo, n] of tally(metas, (m) => m.repo)) {
-    const a = agents.filter((m) => m.repo === repo).length;
-    L.push(`| ${repo} | ${n} | ${a} | ${n - a} |`);
+    const a = agents.filter((m) => m.repo === repo);
+    const h = humans.filter((m) => m.repo === repo);
+    const ae = a.length ? `${pct(a.filter((m) => m.emptyBody).length, a.length)}%` : '-';
+    const he = h.length ? `${pct(h.filter((m) => m.emptyBody).length, h.length)}%` : '-';
+    L.push(`| ${repo} | ${n} | ${a.length} | ${h.length} | ${ae} | ${he} |`);
   }
   L.push('');
 
@@ -106,11 +114,28 @@ export function describeCorpus(root: string): string {
   L.push('');
   const ea = agents.filter((m) => m.emptyBody).length;
   const eh = humans.filter((m) => m.emptyBody).length;
-  L.push(`PRs whose surviving record is the title alone: **${pct(ea + eh, metas.length)}%** overall ` +
-    `(agent ${pct(ea, agents.length)}%, human ${pct(eh, humans.length)}%)`);
+  const ra = agents.filter((m) => m.rawBodyEmpty).length;
+  const rh = humans.filter((m) => m.rawBodyEmpty).length;
+  L.push(`PRs whose surviving record is the title alone: **${pct(ea + eh, metas.length)}%** overall`);
   L.push('');
-  L.push('These are kept. An author who wrote nothing is real data, and dropping them would');
-  L.push('condition the sample on the outcome being measured.');
+  L.push('| measure | agent | human |');
+  L.push('| --- | --- | --- |');
+  L.push(`| no prose (title only, after stripping trailers) | ${pct(ea, agents.length)}% | ${pct(eh, humans.length)}% |`);
+  L.push(`| body already empty in git, before stripping | ${pct(ra, agents.length)}% | ${pct(rh, humans.length)}% |`);
+  L.push('');
+  L.push('Both are reported because they differ asymmetrically. An agent PR often carries a');
+  L.push('`Co-Authored-By:` trailer and no prose, so stripping moves it from "not raw-empty"');
+  L.push('into "no prose" — which INFLATES the agent empty rate and works against the gap. The');
+  L.push('stricter raw measure therefore shows a wider gap, not a narrower one, so the');
+  L.push('comparison does not depend on which convention you prefer.');
+  L.push('');
+  L.push('This is also the check that rules out the obvious tooling explanation. Within a');
+  L.push('single repo the squash setting is identical for both arms, so if the merge button');
+  L.push('were discarding descriptions it would discard them at the same rate for agents and');
+  L.push('humans. The per-repo table above shows it does not.');
+  L.push('');
+  L.push('These PRs are kept. An author who wrote nothing is real data, and dropping them');
+  L.push('would condition the sample on the outcome being measured.');
   L.push('');
 
   L.push('## Record prose already present in the diff');
@@ -122,9 +147,13 @@ export function describeCorpus(root: string): string {
   L.push(`PRs where that is >=30% of the record: **${heavy.length}** (${pct(heavy.length, metas.length)}%)`);
   L.push('');
   L.push('These are records recoverable from the artifact by copying rather than by');
-  L.push('understanding — typically docs, changelog or ADR changes. The headline should be');
-  L.push('recomputed with them excluded, in case they are the only reason the synthetic');
-  L.push('description keeps up.');
+  L.push('understanding. The headline is recomputed with them excluded as a robustness check.');
+  L.push('');
+  L.push('An earlier version of this summary called them "typically docs, changelog or ADR');
+  L.push('changes" and offered them as the explanation for the length inversion. That was');
+  L.push('wrong and is retracted: only about half of them touch a markdown file, and the same');
+  L.push('inversion appears among long-record PRs with ZERO diff overlap. The flag was acting');
+  L.push('as a proxy for verbosity. See the README.');
   L.push('');
 
   L.push('## Matching feasibility (language x size bucket)');

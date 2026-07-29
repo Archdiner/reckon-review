@@ -414,6 +414,21 @@ The tier keys on whether the author wrote anything beyond the title, never on wh
 good. Excluding records for being *bad* would condition the sample on the outcome; excluding
 them for being *absent* is describing the sample.
 
+**Two empty measures, because stripping is not symmetric.** `emptyBody` means "no prose after
+attribution trailers are stripped". An agent PR often carries a `Co-authored-by:` line and
+nothing else, so stripping moves it from "not empty" into "no prose" — which *inflates* the
+agent empty rate and works against the finding rather than creating it. On an earlier draw, 12
+of the 13 empty agent records were exactly that, and the arms read 2.6% vs 29.0% stripped
+against 0.2% vs 26.4% raw: the gap is *wider* on the stricter measure. `rawBodyEmpty` (empty in
+git before any stripping) is therefore recorded per PR alongside it, so the comparison does not
+rest on one debatable convention.
+
+The schema and `describe` carry both, and `describe` now also breaks the empty rate down per
+repo per arm — which is what rules out the merge-tooling explanation, since within one repo the
+squash setting is identical for both arms and a config discarding descriptions would discard
+them equally. **The published `results/` in this branch predate that field**, so the tier table
+above is the stripped measure only; both populate on the next `collect` run.
+
 ### What the agent label means
 
 AIDev was unreachable, so provenance comes from git, and it is weaker than AIDev's label:
