@@ -32,9 +32,19 @@ knowing now because they change what can be claimed later.
   14 PRs are authored by an actual agent account. Question C can be asked about
   agent-*assisted* work only. See "What the agent label means".
 - **Humans leave the description blank far more often than agents do.** The surviving record
-  is the title alone for **28.0%** of human PRs but only **2.6%** of agent ones. This is a
-  raw base rate, not a mechanism-answerability result, but it is the direction the study's
-  thesis predicts and it is measurable without a model.
+  carries no prose for **28.0%** of human PRs against **2.6%** of agent ones. Counting only
+  bodies that were already empty in git before attribution trailers were stripped, the gap is
+  wider still: **25.4%** against **0.2%**. This is a base rate, not a mechanism-answerability
+  result, but it is the direction the study's thesis predicts and needs no model to measure.
+
+  Two objections were checked rather than argued. *Is it the merge button?* No — the split
+  holds inside every repo (airflow 39% vs 9%, grafana 26% vs 2%, langchain 34% vs 4%,
+  supabase 12% vs 1%), and within a repo the squash setting is identical for both arms, so a
+  configuration that discarded descriptions would discard them equally. *Did trailer-stripping
+  manufacture it?* No — it worked against the finding: 12 of the 13 empty agent records were
+  bodies containing only a `Co-Authored-By:` line, so stripping raised the agent rate from
+  0.2% to 2.6%. Both measures are now stored per PR (`emptyBody`, `rawBodyEmpty`) so the
+  comparison never rests on one debatable convention.
 - Agent PRs are substantially larger — median 208 changed lines against 117 — which is
   exactly why matching is not optional.
 - Only 3.3% of records share any 8-word prose run with their own diff, so "the description is
@@ -43,12 +53,12 @@ knowing now because they change what can be claimed later.
   though its label is weak.
 
 To produce actual numbers, set a key and run stages 2-4. **This works on any machine with
-outbound access to the vendor** — the corpus is rebuilt deterministically, so it does not have
-to be the machine that collected it:
+outbound access to the vendor** — it does not have to be the machine that collected the
+corpus:
 
 ```bash
 git clone <this repo> && cd study && npm install
-npm run study -- clone && npm run study -- collect   # ~30 min, rebuilds the same 1000 PRs
+npm run study -- clone && npm run study -- collect   # ~30 min, draws an equivalent 1000 PRs
 
 export OPENAI_API_KEY=...         # or ANTHROPIC_API_KEY, or both
 npm run study -- questions && npm run study -- synthetic && npm run study -- score
@@ -139,8 +149,15 @@ detected and a documented limitation where it cannot. See `src/vendor/PROVENANCE
 Two directories, deliberately separated:
 
 - **`data/` — gitignored.** The working corpus: ~1000 PR folders of raw diffs, plus per-stage
-  intermediates. Derived data, rebuilt deterministically by `study clone && study collect`
-  (seeded sampling), far too large to version.
+  intermediates. Derived data, redrawn by `study clone && study collect`, far too large to
+  version.
+
+  Sampling is seeded, but **reproducible only against an identical clone state**. The studied
+  repos keep merging, and a shuffle over an eligible set that has grown by even one commit
+  draws a different 1000 — re-running collect a day later gave a sample with the same
+  structure and different members. So `study publish` writes `results/corpus-manifest.csv`
+  (id, repo, PR number, SHA, provenance, size), which pins the exact corpus behind any
+  published number and lets a reviewer fetch any individual PR to check it by hand.
 - **`results/` — committed.** Everything needed to re-check a claim: scores, report, corpus
   summary, and a `manifest.json` recording the commit and models. Written only by
   `study publish`, which **refuses to run on a mock backend** so the directory can never fill

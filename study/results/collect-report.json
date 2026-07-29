@@ -1,29 +1,29 @@
 {
   "perRepo": {
     "langchain-ai/langchain": {
-      "eligible": 5710,
+      "eligible": 5707,
       "agentEligible": 67,
-      "selected": 70
+      "selected": 71
     },
     "supabase/supabase": {
       "eligible": 9047,
       "agentEligible": 303,
-      "selected": 211
+      "selected": 192
     },
     "apache/airflow": {
       "eligible": 14612,
       "agentEligible": 175,
-      "selected": 212
+      "selected": 227
     },
     "grafana/grafana": {
       "eligible": 18096,
       "agentEligible": 764,
-      "selected": 440
+      "selected": 441
     },
     "prisma/prisma": {
       "eligible": 412,
       "agentEligible": 148,
-      "selected": 67
+      "selected": 69
     }
   },
   "kept": {
@@ -31,13 +31,13 @@
     "human": 500
   },
   "drops": {
-    "dependency-bump": 19,
-    "dependency-manifest-only": 29,
-    "formatting-only": 6,
-    "docs-only": 146,
-    "below-size-floor": 306,
-    "no-surviving-files": 5,
-    "diff-unavailable": 0
+    "dependency-bump": 9,
+    "dependency-manifest-only": 23,
+    "formatting-only": 3,
+    "docs-only": 136,
+    "below-size-floor": 331,
+    "no-surviving-files": 10,
+    "diff-unavailable": 2
   },
   "total": 1000
 }

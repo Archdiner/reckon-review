@@ -1,6 +1,6 @@
 {
-  "publishedAtUtc": "2026-07-29T13:18:47.024Z",
-  "commit": "1a9e2721c15a81a2cb3ebe9b1b6c1576d80b18db",
+  "publishedAtUtc": "2026-07-29T13:35:06.297Z",
+  "commit": "335bdb5c2a1c7169807a311e9ade780552848e8b",
   "scored": false,
   "prsScored": 0,
   "questionsScored": 0,
@@ -8,6 +8,7 @@
   "scoringModel": null,
   "artifacts": [
     "collect-report.json",
-    "corpus-summary.md"
+    "corpus-summary.md",
+    "corpus-manifest.csv"
   ]
 }

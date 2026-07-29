@@ -29,6 +29,7 @@ import { scoreCorpus, type ScoreMode } from './stage4_score.js';
 import { analyze, writeCsvs, formatReport } from './stage6_analyze.js';
 import { exportWorksheet, compareLabels } from './handlabel.js';
 import { describeCorpus } from './describe.js';
+import { prDirs, readMeta } from './io.js';
 import { backendFor, selfJudgementWarning } from './backends.js';
 import { LeakageError } from './guard.js';
 
@@ -213,6 +214,27 @@ async function cmdPublish() {
     if (!existsSync(src)) continue;
     copyFileSync(src, join(RESULTS, f));
     copied.push(f);
+  }
+
+  // Pin the exact sample. Seeded sampling is reproducible only against an identical clone
+  // state: the studied repos keep merging, and a shuffle over an eligible set that grew by
+  // even one commit draws a different 1000. Publishing the resolved ids and SHAs means the
+  // precise corpus behind a published number stays recoverable no matter how far upstream has
+  // moved since, and lets a reviewer fetch any single PR to check it by hand.
+  const metas = prDirs(PRS).map(readMeta);
+  if (metas.length > 0) {
+    const cols = [
+      'id', 'repo', 'prNumber', 'sha', 'mergedAt', 'provenance', 'evidence', 'language',
+      'changedLines', 'filesChanged', 'sizeBucket', 'emptyBody', 'rawBodyEmpty',
+    ] as const;
+    const esc = (v: unknown) => {
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [cols.join(',')];
+    for (const m of metas) lines.push(cols.map((c) => esc((m as any)[c])).join(','));
+    writeFileSync(join(RESULTS, 'corpus-manifest.csv'), `${lines.join('\n')}\n`);
+    copied.push('corpus-manifest.csv');
   }
 
   const manifest = {
