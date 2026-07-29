@@ -32,6 +32,8 @@ import type { LlmBackend } from '@reckon/core';
 import { LeakageError } from './coverage.js';
 import { loadCalibration, midrankPercentile } from './calibration.js';
 import { loadPosterData, renderPoster } from './poster.js';
+import { runRecordSweep, formatRecordSweepReport } from './recordsweep.js';
+import { buildDataPack } from './datapack.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -540,8 +542,84 @@ async function cmdPoster() {
   console.error(`wrote ${file}`);
 }
 
+/**
+ * The record sweep: the same coverage measurement across many repositories.
+ *
+ *   riskmap recordsweep --repos repos-record.txt --max-regions 20 --per-region 15
+ *
+ * Hours long and tens of thousands of model calls, so it is resumable by construction: a repository
+ * whose JSON is already on disk is skipped. Clones it creates are deleted after scoring, so peak
+ * disk is one clone rather than twenty.
+ */
+async function cmdRecordSweep() {
+  const repos = arg('repos', join(ROOT, 'repos-record.txt'))!;
+  if (!existsSync(resolve(repos))) {
+    throw new Error(`repo list not found: ${repos}\n  usage: riskmap recordsweep [--repos FILE] [--max-regions 20] [--per-region 15] [--out DIR]`);
+  }
+  const b = backends();
+  const outDir = resolve(arg('out', join(ROOT, 'out', 'recordsweep'))!);
+  mkdirSync(outDir, { recursive: true });
+  const perRegion = Number(arg('per-region', '15'));
+  const maxRegions = Number(arg('max-regions', '20'));
+  console.error(
+    `record sweep — ${b.labels}, up to ${maxRegions} areas per repository at ${perRegion} commits each`
+  );
+
+  const rows = await runRecordSweep({
+    reposFile: resolve(repos),
+    clonesDir: resolve(arg('clones', join(ROOT, 'clones'))!),
+    outDir,
+    backend: b.score,
+    genBackend: b.gen,
+    perRegion,
+    maxRegions,
+    concurrency: Number(arg('concurrency', '10')),
+    force: flag('force'),
+    ...(arg('clone-timeout') ? { cloneTimeoutMs: Number(arg('clone-timeout')) * 1000 } : {}),
+    onProgress: (m) => console.error(m),
+  });
+
+  writeFileSync(join(outDir, 'record-sweep.md'), formatRecordSweepReport(rows));
+  const scored = rows.filter((r) => r.status === 'scored');
+  console.error('');
+  console.error(
+    `${scored.length} scored, ${rows.filter((r) => r.status === 'refused').length} refused, ` +
+      `${rows.filter((r) => r.status === 'failed').length} failed`
+  );
+  console.error(`wrote ${join(outDir, 'record-sweep.md')}`);
+}
+
+/**
+ * The data pack: every measurement as flat CSVs, with a written schema.
+ *
+ *   riskmap datapack [--out DIR]
+ *
+ * No model calls. It exists because the measurements live in four different shapes with two
+ * incompatible scoring protocols among them, and that context is exactly what gets lost when someone
+ * copies a CSV into a notebook.
+ */
+async function cmdDataPack() {
+  const outDir = resolve(arg('out', join(ROOT, 'out', 'datapack'))!);
+  const r = buildDataPack({
+    studyResults: resolve(arg('study', join(ROOT, '..', 'study', 'results'))!),
+    sweepDir: resolve(arg('sweep', join(ROOT, 'out', 'recordsweep'))!),
+    extraRecordMaps: [
+      resolve(arg('record-map', join(ROOT, 'out', 'recordmap', 'grafana-grafana-record-map.json'))!),
+    ],
+    gateJson: resolve(arg('gate-json', join(ROOT, 'out', 'gate', 'gate.json'))!),
+    regressionJson: resolve(arg('regression', join(ROOT, 'out', 'regress-coverage', 'regression.json'))!),
+    areasAsOfT: resolve(arg('areas-as-of-t', join(ROOT, 'out', 'regress-coverage', 'areas-as-of-T.csv'))!),
+    outDir,
+  });
+  for (const m of r.missing) console.error(`  absent, so a file is missing or short: ${m}`);
+  for (const f of r.files) console.error(`  ${f.name.padEnd(28)} ${String(f.rows).padStart(6)} rows`);
+  console.error(`wrote ${outDir}`);
+}
+
 const COMMANDS: Record<string, () => void | Promise<void>> = {
   poster: cmdPoster,
+  datapack: cmdDataPack,
+  recordsweep: cmdRecordSweep,
   gate: cmdGate,
   map: cmdMap,
   recordmap: cmdRecordMap,
@@ -555,7 +633,7 @@ const COMMANDS: Record<string, () => void | Promise<void>> = {
 const run = cmd ? COMMANDS[cmd] : undefined;
 if (!run) {
   console.error(
-    'commands: gate --repos <file> | map <clone> | recordmap <clone> | poster | sweep --repos <file> | validate <clone>... | regress <clone>... | calibrate'
+    'commands: gate --repos <file> | map <clone> | recordmap <clone> | recordsweep | poster | datapack | sweep --repos <file> | validate <clone>... | regress <clone>... | calibrate'
   );
   process.exit(1);
 }

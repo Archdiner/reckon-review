@@ -108,6 +108,8 @@ export interface RecordMap {
   /** True when the gate refused. `cells` is then empty and the page explains instead of drawing. */
   refused: boolean;
   cells: RecordCell[];
+  /** Areas that exist but were outside the `maxRegions` slice, so were never scored. */
+  regionsDropped?: number;
   /** Weighted overall coverage across scored regions, for the headline sentence. */
   overall: { explicit: number; total: number; rate: number } | null;
   calibration: { corpus: string; n: number; shareAtZero: number } | null;
@@ -141,6 +143,17 @@ function greyReasonFor(d: RegionCoverage | undefined, halfWidth: number | null):
 
 export interface BuildRecordMapOpts {
   repo: string;
+  /**
+   * Score only the N largest extant areas, by lines changed in the window.
+   *
+   * THE REASON IS SAMPLING VARIANCE, NOT COST ALONE. A fixed model budget spread over every area
+   * gives each one too few commits to clear the interval rule, and a page of greyed cells is not a
+   * cheaper map — it is no map. Measured: 5 commits per area greys 82% of cells, 15 greys none. So
+   * across many repositories the budget buys DEPTH on the areas a maintainer would look at first
+   * rather than a thin estimate everywhere. The count of areas dropped is recorded on the map so a
+   * reader knows the page is a top slice rather than the whole tree.
+   */
+  maxRegions?: number;
   /** Trailing window the map describes. */
   windowMonths?: number;
   /** Sub-window defining "active". Carried by the border. */
@@ -233,8 +246,20 @@ export async function buildRecordMap(opts: BuildRecordMapOpts): Promise<RecordMa
   }
   log(`${byRegion.size} extant regions`);
 
+  // Rank by lines changed and take the top slice, when a cap is set.
+  const ranked = [...byRegion].sort((a, b) => b[1].lines - a[1].lines);
+  const cap = opts.maxRegions && opts.maxRegions > 0 ? opts.maxRegions : ranked.length;
+  const scoredRegions = new Set(ranked.slice(0, cap).map(([r]) => r));
+  const regionsDropped = ranked.length - scoredRegions.size;
+  if (regionsDropped > 0) {
+    log(`scoring the ${scoredRegions.size} largest areas; ${regionsDropped} smaller areas not scored`);
+  }
+
   const commitsFor = new Map<string, Commit[]>();
-  for (const [r, a] of byRegion) commitsFor.set(r, [...a.commits.values()]);
+  for (const [r, a] of byRegion) {
+    if (!scoredRegions.has(r)) continue;
+    commitsFor.set(r, [...a.commits.values()]);
+  }
 
   log(`scoring coverage, up to ${opts.perRegion ?? DEFAULT_PER_REGION} commits per region`);
   const result = await computeCoverage(commitsFor, {
@@ -253,6 +278,7 @@ export async function buildRecordMap(opts: BuildRecordMapOpts): Promise<RecordMa
   let questionTotal = 0;
 
   for (const [path, a] of byRegion) {
+    if (!scoredRegions.has(path)) continue;
     const d = result.detail.get(path);
     let coverage: number | null = null;
     let ciLo: number | null = null;
@@ -290,6 +316,7 @@ export async function buildRecordMap(opts: BuildRecordMapOpts): Promise<RecordMa
   return {
     ...base,
     cells,
+    regionsDropped,
     overall:
       questionTotal > 0
         ? { explicit: explicitTotal, total: questionTotal, rate: explicitTotal / questionTotal }

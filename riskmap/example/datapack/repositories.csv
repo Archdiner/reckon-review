@@ -1,0 +1,2 @@
+repo,head_sha,as_of,refused,gate_verdict,body_density,commits_in_window,window_months,coverage,questions_explicit,questions_total,areas_scored,areas_not_scored,areas_usable
+grafana/grafana,3c66fe6f38ed4beda1cbb528c9766e0108067442,2026-07-29,false,available,0.525,18545,24,0.2514500170590242,737,2931,64,,61

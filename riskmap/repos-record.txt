@@ -1,0 +1,36 @@
+# Repositories for the record sweep, in run order.
+#
+# Every entry here PASSED the body-density gate (out/gate/gate.json) except the last, which is
+# included deliberately: the sweep should be seen refusing a repository, not only succeeding on the
+# ones that were pre-selected to work.
+#
+# Order matters. The first four already have clones on disk, so they cost no download. After that
+# the list runs roughly smallest clone first, so an interrupted run has scored as many repositories
+# as possible rather than spending its time on the three giants.
+
+# --- already cloned, no download ---
+grafana/grafana
+apache/airflow
+supabase/supabase
+langchain-ai/langchain
+
+# --- gate: pass ---
+tailwindlabs/tailwindcss
+prisma/prisma
+calcom/cal.com
+directus/directus
+strapi/strapi
+appwrite/appwrite
+denoland/deno
+withastro/astro
+facebook/react
+vercel/next.js
+django/django
+hashicorp/terraform
+elastic/elasticsearch
+microsoft/vscode
+kubernetes/kubernetes
+pytorch/pytorch
+
+# --- gate: fail. Kept so the refusal path is exercised on real data. ---
+nocodb/nocodb

@@ -272,6 +272,15 @@ export interface RegressionResult {
   /** `extant` estimated on the unrestricted sample, where it is not constant. */
   extantFits: Fit[];
   predictorCoverage: { predictor: string; present: number; missing: number }[];
+  /**
+   * EVERY REGION AT T, with its dimensions and its outcomes. The row-level data, not just the fits.
+   *
+   * Added because the first coverage run persisted only the fits, and the per-region coverage numbers
+   * it had spent hours of model calls producing existed nowhere afterwards except in the run's stderr.
+   * A result that expensive has to survive the process that computed it. It also means the analysis
+   * can be redone by someone who disagrees with the estimator, which is the more important reason.
+   */
+  rows: RegionRecord[];
   notes: string[];
   structuralGaps: string[];
 }
@@ -639,6 +648,7 @@ export async function runRegression(opts: RegressionOpts): Promise<RegressionRes
     repos: opts.repos,
     monthsBack: opts.monthsBack,
     followMonths: opts.followMonths,
+    rows: all,
     asOf,
     sample: {
       byRepo,
