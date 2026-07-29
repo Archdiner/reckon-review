@@ -1233,7 +1233,9 @@ export function formatValidationReport(r: ValidationResult): string {
     // handful of regions — exactly the kind of sentence this report exists to not print.
     const goneShare = d.flaggedTotal ? g.flagged / d.flaggedTotal : 0;
     const qualifier =
-      goneShare > 0.5 ? 'most of the flagged arm was' : `${g.flagged} of the flagged regions were`;
+      goneShare > 0.5
+        ? 'most of the flagged arm was'
+        : `${g.flagged} flagged region${g.flagged === 1 ? ' was' : 's were'}`;
     L.push(`### 1a. Sensitivity: ${qualifier} already gone at T`);
     L.push('');
     L.push(

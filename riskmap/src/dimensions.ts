@@ -110,6 +110,8 @@ export interface RegionInput {
   whoOf: Map<string, string>;
   /** Path -> identity of the most recent contributor to touch it. Drives the headline. */
   lastToucher: Map<string, string>;
+  /** Whether any file under the region survives in the tree being analysed. */
+  extant: boolean;
 }
 
 /**
@@ -191,6 +193,7 @@ export function computeRegion(
     recordCoverage: null,
     recordCoveragePercentile: null,
     recordCommitsScored: 0,
+    extant: input.extant,
     flags: [],
     flagged: false,
   };
@@ -260,9 +263,12 @@ export function applyFlags(
   // of 3 when coverage was unscored and 3 of 4 when it was scored, so the same region could flag
   // only when the tool had failed to measure it — selecting for unmeasured regions, invisibly.
   // Scoring coverage must only ever ADD evidence.
+  // A DELETED REGION CANNOT BE AT RISK. Nothing is left to understand, so there is nobody who
+  // needs to explain it. This is not a threshold — it is a precondition, and it is checked
+  // before any of them.
   const ownership = flags.includes('orphaned') || flags.includes('concentrated');
   const live = flags.includes('hot');
-  return { ...r, flags, flagged: live && ownership };
+  return { ...r, flags, flagged: r.extant && live && ownership };
 }
 
 /**

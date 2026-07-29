@@ -216,6 +216,23 @@ export async function readAuthorRoster(
   return out;
 }
 
+/**
+ * Every path in the tree at a given commit.
+ *
+ * Needed because a region can be built entirely from commits to files that NO LONGER EXIST.
+ * A directory deleted two years ago still has history inside the window, so it is admitted as a
+ * row, scores whatever its long-departed authors scored, and then — being deleted — receives no
+ * further commits, which the validation reads as a correct prediction of dormancy. It is not a
+ * prediction. It is arithmetic about a directory that is gone.
+ */
+export async function readTreePaths(repo: string, ref = 'HEAD'): Promise<Set<string>> {
+  const { stdout } = await exec('git', ['ls-tree', '-r', '--name-only', ref], {
+    cwd: repo,
+    maxBuffer: MAX_BUFFER,
+  });
+  return new Set(stdout.split('\n').filter(Boolean));
+}
+
 /** The unified diff for one commit, used only by the record-coverage stage. */
 export async function readCommitDiff(repo: string, sha: string): Promise<string> {
   const { stdout } = await exec(

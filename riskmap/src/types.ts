@@ -124,6 +124,17 @@ export interface Region {
   recordCommitsScored: number;
 
   // ---- ranking ----
+  /**
+   * Whether any file under this region still exists in the tree being analysed.
+   *
+   * A region can be assembled entirely from commits to files deleted long ago. Such a region
+   * cannot be at risk — there is nothing left to understand — and flagging it produced the two
+   * grafana rows (`pkg/framework`, `pkg/coremodel`) that a reader correctly dismissed. It also
+   * contaminated the validation: 20 of 28 flagged regions had no files at the cutoff, 82 of 83
+   * already-empty regions were dormant by arithmetic, and restricting to extant regions
+   * collapsed the headline dormancy effect from 20/28-vs-67/253 to 0/8-vs-5/190.
+   */
+  extant: boolean;
   /** Which threshold tests this region clears. Displayed; never weighted into a number. */
   flags: FlagName[];
   flagged: boolean;

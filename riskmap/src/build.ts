@@ -7,7 +7,7 @@
  */
 
 import type { LlmBackend } from '@reckon/core';
-import { readLog, readHead, readRepoName, readAuthorRoster } from './gitlog.js';
+import { readLog, readHead, readRepoName, readAuthorRoster, readTreePaths } from './gitlog.js';
 import { resolveIdentities, isBot } from './identity.js';
 import { filterCommits } from './filters.js';
 import { partitionRegions, foldSmallRegions, regionFor } from './regions.js';
@@ -133,6 +133,13 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
   const lastToucher = new Map<string, string>();
   for (const e of [...edits].sort((a, b) => a.at - b.at)) lastToucher.set(e.path, e.who);
 
+  // Which regions still exist. Read from the tree at the analysis point, so the retrospective
+  // harness asks the same question as of T rather than as of today.
+  const treePaths = await readTreePaths(opts.repo, opts.asOf ? `HEAD@{${new Date(asOf).toISOString()}}` : 'HEAD')
+    .catch(() => readTreePaths(opts.repo, 'HEAD'));
+  const extantRegions = new Set<string>();
+  for (const p of treePaths) extantRegions.add(regionFor(p, regionSet));
+
   const commitsBySha = new Map(kept.map((c) => [c.sha, c]));
   const commitsByRegion = new Map<string, Commit[]>();
   for (const [region, list] of editsByRegion) {
@@ -157,7 +164,7 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
   for (const [region, list] of editsByRegion) {
     regions.push(
       computeRegion(
-        { region, edits: list, commits: commitsByRegion.get(region) ?? [], whoOf: new Map(), lastToucher },
+        { region, edits: list, commits: commitsByRegion.get(region) ?? [], whoOf: new Map(), lastToucher, extant: extantRegions.has(region) },
         inactive,
         spanMonths,
         t
