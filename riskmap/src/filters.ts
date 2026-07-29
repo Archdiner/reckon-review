@@ -55,6 +55,14 @@ export interface FilterOpts {
   maxFilesPerCommit: number;
   /** Commits at or after this epoch ms are in the measurement window. */
   windowStart: number;
+  /**
+   * Upper bound on AUTHOR date. Enforced here rather than left to git, because `--before`
+   * filters the COMMITTER date: a commit authored 2025-12-01 with committer date 2023-01-01
+   * passes `--before=2024-06-01` and lands in a map built as of 2024-06-01. That is post-cutoff
+   * information inside a map the validation harness treats as blind, so the guarantee has to be
+   * enforced on the field everything downstream actually uses.
+   */
+  windowEnd: number;
 }
 
 export interface FilterResult {
@@ -97,7 +105,7 @@ export function filterCommits(commits: Commit[], opts: FilterOpts): FilterResult
       dropped.noSurvivingFiles++;
       continue;
     }
-    if (c.at < opts.windowStart) {
+    if (c.at < opts.windowStart || c.at > opts.windowEnd) {
       dropped.outsideWindow++;
       continue;
     }

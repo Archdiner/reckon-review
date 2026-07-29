@@ -14,6 +14,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 import { buildMap } from './build.js';
 import { renderHtml } from './render.js';
 import { runValidation, formatValidationReport } from './validate.js';
@@ -118,7 +119,12 @@ async function cmdMap() {
   writeFileSync(json, `${JSON.stringify(map, null, 2)}\n`);
 
   console.error('');
-  console.error(`${map.top.length} flagged region${map.top.length === 1 ? '' : 's'} of ${map.regions.length}`);
+  // `top` is capped at ten, so printing its length reported 30 flagged regions as "10".
+  const nFlagged = map.regions.filter((r) => r.flagged).length;
+  console.error(
+    `${nFlagged} flagged region${nFlagged === 1 ? '' : 's'} of ${map.regions.length}` +
+      (nFlagged > map.top.length ? ` (showing the top ${map.top.length})` : '')
+  );
   for (const r of map.top) {
     console.error(
       `  ${r.path.padEnd(38)} orphaned ${(r.orphanedShare * 100).toFixed(0).padStart(3)}%  ` +
@@ -174,6 +180,16 @@ function cmdCalibrate() {
         'and this command is not needed; pass --from to point at a per-pr-scores.csv.'
     );
   }
+  let sourceCommit = 'unknown-commit';
+  try {
+    sourceCommit = execSync('git log -1 --format=%H -- study/results/per-pr-scores.csv', {
+      cwd: join(ROOT, '..'),
+      encoding: 'utf8',
+    }).trim() || 'unknown-commit';
+  } catch {
+    // A standalone checkout has no study history; the committed calibration file already
+    // carries its provenance, so this path only matters when someone regenerates.
+  }
   const lines = readFileSync(csv, 'utf8').trim().split('\n');
   const header = (lines[0] ?? '').split(',');
   const col = header.indexOf('realPctExplicit');
@@ -201,7 +217,10 @@ function cmdCalibrate() {
     measure:
       'share of mechanism questions answered explicitly (rubric score 2) by the real written ' +
       'record, independent scoring',
-    source: `${csv}, column realPctExplicit`,
+    // Provenance must survive a rebuild. Recording resolve(csv) would replace the committed
+    // "study/results/per-pr-scores.csv @ <commit>" string with a local absolute path and then
+    // serialise that into every customer-facing JSON.
+    source: `study/results/per-pr-scores.csv @ ${sourceCommit}, column realPctExplicit`,
     deciles: Array.from({ length: 9 }, (_, i) => round(q((i + 1) / 10))),
     min: round(vals[0] ?? 0),
     max: round(vals[vals.length - 1] ?? 0),

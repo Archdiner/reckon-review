@@ -6,7 +6,7 @@
  * fastest, because the reader knows their own merge settings and this tool does not.
  */
 
-import { computeRegion, applyFlags, inactiveIdentities, DEFAULT_THRESHOLDS, rankRegions, resolveChurnThreshold } from './dimensions.js';
+import { computeRegion, applyFlags, inactiveIdentities, DEFAULT_THRESHOLDS, rankRegions, resolveChurnThreshold, effectiveRule } from './dimensions.js';
 import { detectSquashConvention, recordUsableForFlags } from './squash.js';
 import { midrankPercentile, shareBelow, loadCalibration, describePercentile } from './calibration.js';
 import { isFixCommit } from './validate.js';
@@ -216,6 +216,29 @@ ok('a hotfix is a fix commit', isFixCommit('hotfix: restore the health endpoint'
 ok('a regression reference is a fix commit', isFixCommit('Correct the offset', 'Regression introduced by abc123.'));
 ok('an ordinary bug fix is NOT a fix commit', !isFixCommit('fix: handle empty input', 'Guards against a nil map.'));
 ok('a feature is not a fix commit', !isFixCommit('Add pagination to the search API', ''));
+
+
+console.log('\nregression tests for defects found in review');
+
+{
+  // The page must print the rule that RAN, not the configured minFlags. The shipped grafana
+  // example said "at least 3 of these tests" above two rows carrying two chips each.
+  const withRecord = effectiveRule(DEFAULT_THRESHOLDS, true);
+  const withoutRecord = effectiveRule(DEFAULT_THRESHOLDS, false);
+  ok('effective rule with the record test available', withRecord.need === 3 && withRecord.available === 4);
+  ok('THE SELF-CONTRADICTING PAGE: without coverage the rule is 2 of 3', withoutRecord.need === 2 && withoutRecord.available === 3);
+  ok('a raised --min-flags cannot exceed what is testable', effectiveRule({ ...DEFAULT_THRESHOLDS, minFlags: 4 }, false).need === 2);
+}
+
+{
+  // Churn must divide by the observed span, not the configured window. An 18-month repo was
+  // having every rate divided by 60.
+  const edits = Array.from({ length: 20 }, (_, i) => edit(`c${i}`, 'w'));
+  const short = computeRegion({ region: 'r', edits, commits: [], whoOf: new Map() }, new Set(), 18, DEFAULT_THRESHOLDS);
+  const long = computeRegion({ region: 'r', edits, commits: [], whoOf: new Map() }, new Set(), 60, DEFAULT_THRESHOLDS);
+  ok('THE YOUNG-REPO CASE: churn uses the observed span', Math.abs(short.commitsPerMonth - 20 / 18) < 1e-9);
+  ok('a longer span gives a lower rate for the same commits', long.commitsPerMonth < short.commitsPerMonth);
+}
 
 console.log(failures === 0 ? '\nall dimension tests passed' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -48,6 +48,8 @@ export interface ExtractReport {
   /** Analysis date: HEAD's author date, NOT wall clock. See gitlog.ts for why. */
   asOf: number;
   windowMonths: number;
+  /** Months of history actually observed. Churn divides by this, not by windowMonths. */
+  spanMonths: number;
   commitsSeen: number;
   commitsKept: number;
   dropped: Record<DropReason, number>;
@@ -58,7 +60,8 @@ export interface ExtractReport {
   /** Directory depth the regions were cut at, and how that depth was chosen. */
   regionDepth: number;
   regionDepthFallback: boolean;
-  regionDepthCandidates: { depth: number; regions: number }[];
+  /** One entry per split iteration: which region was split and the resulting count. */
+  regionSplits: { step: number; split: string | null; regions: number }[];
 }
 
 /** Whether the record dimension can be trusted for this repo at all. */

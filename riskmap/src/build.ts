@@ -7,7 +7,7 @@
  */
 
 import type { LlmBackend } from '@reckon/core';
-import { readLog, readHead, readRepoName } from './gitlog.js';
+import { readLog, readHead, readRepoName, readAuthorRoster } from './gitlog.js';
 import { resolveIdentities, isBot } from './identity.js';
 import { filterCommits } from './filters.js';
 import { partitionRegions, foldSmallRegions, regionFor } from './regions.js';
@@ -66,12 +66,25 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
   // Bot classification happens before anything else counts, because a bot in the identity
   // clustering would merge real people into a release account through a shared display name.
   const marked = raw.map((c) => ({ ...c, bot: isBot(c.authorName, c.authorEmail) }));
-  const ids = resolveIdentities(marked.filter((c) => !c.bot));
+
+  // IDENTITY CLUSTERING READS THE FULL HISTORY, NOT THE WINDOW. An earlier version fed it the
+  // windowed commits and argued in a comment that this was safe because the inactivity cutoff
+  // sits inside the window. That argument only covered `lastSeen`; it missed clustering, which
+  // unions transitively on display name, so a commit older than the window can be the only
+  // bridge between two in-window aliases of one person. Splitting one contributor in two
+  // invents a bus factor — the expensive direction of error — and it was measured moving
+  // orphanedShare by 0.50 and flipping a region's flag with the in-window edits held identical.
+  // The roster call omits --numstat, so it is cheap.
+  const roster = (await readAuthorRoster(opts.repo, opts.asOf ? asOf : undefined))
+    .map((r) => ({ authorName: r.name, authorEmail: r.email }))
+    .filter((r) => !isBot(r.authorName, r.authorEmail));
+  const ids = resolveIdentities(roster);
   const whoOf = (c: Commit) => ids.keyFor(c.authorName, c.authorEmail);
 
   const { kept, dropped, pathsExcluded } = filterCommits(marked, {
     maxFilesPerCommit: t.maxFilesPerCommit,
     windowStart,
+    windowEnd: asOf,
   });
   log(`${raw.length} commits read, ${kept.length} in window after filtering`);
 
@@ -121,13 +134,20 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
   const squash = detectSquashConvention(kept);
   log(`record dimension: ${squash.availability} (${(squash.substantiveBodyShare * 100).toFixed(1)}% substantive bodies)`);
 
+  // Churn divides by the span actually observed, not the configured window: a repo with 18
+  // months of history had every rate divided by 60 and printed a third of the truth.
+  let earliest = asOf;
+  for (const c of kept) if (c.at < earliest) earliest = c.at;
+  const spanMonths = Math.max(1, (asOf - earliest) / (30.44 * 24 * 60 * 60 * 1000));
+  log(`observed span ${spanMonths.toFixed(1)} months (window allows ${t.windowMonths})`);
+
   let regions: Region[] = [];
   for (const [region, list] of editsByRegion) {
     regions.push(
       computeRegion(
         { region, edits: list, commits: commitsByRegion.get(region) ?? [], whoOf: new Map() },
         inactive,
-        asOf,
+        spanMonths,
         t
       )
     );
@@ -148,7 +168,10 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
     if (calibration) {
       regions = applyCoverage(regions, result, (v) => midrankPercentile(calibration.sorted, v));
     } else {
-      regions = applyCoverage(regions, result, () => 50);
+      // Do NOT stamp p50. An earlier version did, which rendered a corpus position that was
+      // never measured and silently made `undocumented` unfireable. Coverage is shown without
+      // a percentile instead.
+      regions = applyCoverage(regions, result, () => Number.NaN);
     }
     log(`${result.questionsAsked} questions scored`);
   } else if (opts.coverage) {
@@ -190,9 +213,13 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
       pathsExcluded,
       identitiesBeforeMerge: ids.before,
       identitiesAfterMerge: ids.after,
+      spanMonths,
       regionDepth: partition.maxDepth,
       regionDepthFallback: partition.fallback,
-      regionDepthCandidates: partition.trace.map((t) => ({ depth: t.step, regions: t.regions })),
+      // `trace` records SPLIT ITERATIONS, not depths. Serialising t.step under a `depth` key
+      // asserted things like "depth 2 -> 74 regions" in customer-visible JSON, which is simply
+      // a different claim from the one the partition makes.
+      regionSplits: partition.trace.map((t) => ({ step: t.step, split: t.split, regions: t.regions })),
     },
     thresholds: { ...t, commitsPerMonth: churnThreshold },
     squash,

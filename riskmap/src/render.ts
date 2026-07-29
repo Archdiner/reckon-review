@@ -20,6 +20,7 @@
  */
 
 import type { Region, RiskMap } from './types.js';
+import { effectiveRule } from './dimensions.js';
 import { describePercentile, type Calibration } from './calibration.js';
 
 const ACTION =
@@ -42,7 +43,15 @@ function fmtDate(ms: number | null): string {
 
 function monthYear(ms: number | null): string {
   if (ms === null) return 'never';
-  return new Date(ms).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  // timeZone MUST be pinned. Without it this renders in the generating machine's local zone
+  // while fmtDate above uses UTC, so the table cell and the sentence directly beneath it
+  // disagreed for any timestamp near midnight — and the page changed depending on where it was
+  // generated, breaking the "same clone yields the same map" claim.
+  return new Date(ms).toLocaleDateString('en-GB', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
 }
 
 /**
@@ -95,6 +104,7 @@ function flagChips(r: Region): string {
 export function renderHtml(map: RiskMap, cal: Calibration | null): string {
   const { report, thresholds: t, squash, top } = map;
   const recordShown = squash.availability !== 'unavailable';
+  const rule = effectiveRule(t, recordShown && top.some((r) => r.recordCoveragePercentile !== null));
 
   const rows = top
     .map((r) => {
@@ -116,7 +126,7 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
     .join('');
 
   const empty = `<tr><td colspan="${recordShown ? 6 : 5}" class="none">
-    No region cleared ${t.minFlags} of the ${recordShown ? 'four' : 'three available'} tests. That is a
+    No region cleared ${rule.need} of the ${rule.available} available tests with an ownership signal. That is a
     result, not an error — the thresholds are printed below and this repository sits under them.
   </td></tr>`;
 
@@ -172,7 +182,7 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
   <h1>Where this codebase depends on people who have stopped committing</h1>
   <p class="meta">
     <strong>${esc(report.repo)}</strong> · <code>${esc(report.headSha.slice(0, 10))}</code> ·
-    ${report.windowMonths}-month window ending ${fmtDate(report.asOf)} ·
+    ${Math.min(report.windowMonths, Math.round(report.spanMonths))}-month window ending ${fmtDate(report.asOf)} ·
     ${report.commitsKept.toLocaleString('en-US')} commits · ${map.regions.length} regions ·
     generated ${map.generatedAtUtc.slice(0, 10)}
   </p>
@@ -219,7 +229,8 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
         available to explain this one.</li>
       <li><strong>Concentration</strong> — share of commits from the single largest contributor.
         High concentration together with a high orphaned share is the bus-factor case.</li>
-      <li><strong>Churn</strong> — commits and lines per month over the window. A region nobody
+      <li><strong>Churn</strong> — commits and lines per month over the ${report.spanMonths.toFixed(0)} months of history
+        actually observed, not over the configured window. A region nobody
         touches is lower risk than a hot one with the same ownership profile.</li>
       ${recordShown ? `<li><strong>Record coverage</strong> — share of mechanism questions about a change that
         the commit records actually answer, generated and scored by the same instrument used on the
@@ -230,7 +241,11 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
 
     <h2>Thresholds</h2>
     <p>
-      A region is listed when it clears at least <strong>${t.minFlags}</strong> of these tests.
+      A region is listed when it clears at least <strong>${rule.need}</strong> of the
+      ${rule.available} available tests, <strong>and at least one of those must be an ownership
+      test</strong> (orphaned or concentrated). Churn and thin documentation amplify an ownership
+      problem; on their own they describe a busy or a terse region, which is not what this map is
+      about.
       They are printed because a reader who disagrees with them should be able to see exactly what
       they were.
     </p>
@@ -241,7 +256,11 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
       ${recordShown ? `<li>record coverage at or below the ${t.coveragePercentile}th percentile of the calibration corpus</li>` : '<li>record coverage — <em>not available for this repository</em></li>'}
     </ul>
     <p>
-      Regions are directories at depth ${report.regionDepth}${report.regionDepthFallback ? ', the closest available' : ', chosen to give between 20 and 60 regions for this repository'}; directories with fewer than
+      Regions are directories cut at <strong>mixed depth</strong>, from the repository root down to
+      ${report.regionDepth} levels: the tree is split largest-region-first until no single region
+      holds a disproportionate share of the repository, so a big subsystem is broken up while a
+      small directory stays whole. This repository resolved to ${map.regions.length} regions.
+      Directories with fewer than
       ${t.regionMinCommits} commits are folded into their parent. Directory rather than file
       because renames make file-level history unreliable, and because four hundred cells is a
       screenshot rather than a decision.

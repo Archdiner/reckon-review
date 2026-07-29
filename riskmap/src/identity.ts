@@ -29,7 +29,6 @@
  */
 
 import { createHash } from 'node:crypto';
-import type { Commit } from './types.js';
 
 const BOT_EMAIL =
   /(^|[+.@-])(dependabot|renovate(bot)?|greenkeeper|snyk-bot|github-actions|actions-user|semantic-release|release-please|imgbot|allcontributors|pre-commit-ci|mergify|codecov|weblate|crowdin|transifex|restyled|whitesource|scala-steward|pyup|deepsource|sonarcloud|netlify|vercel|stale)\b/i;
@@ -117,7 +116,7 @@ export interface IdentityResolution {
  * It is stable within a run and across runs on the same history, which is what the
  * retrospective validation needs.
  */
-export function resolveIdentities(commits: Commit[]): IdentityResolution {
+export function resolveIdentities(commits: { authorName: string; authorEmail: string }[]): IdentityResolution {
   const uf = new UnionFind();
   const pairs: { name: string; email: string; ne: string; nn: string }[] = [];
   const seen = new Set<string>();

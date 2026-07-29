@@ -140,8 +140,18 @@ export async function readLog(opts: LogOpts): Promise<Commit[]> {
     '--date=iso-strict',
     `--format=${REC}%H${UNIT}%an${UNIT}%ae${UNIT}%ad${UNIT}%s${UNIT}%b`,
   ];
+  // `--since-as-filter`, NOT `--after`. `--after` stops TRAVERSAL at the first out-of-range
+  // commit rather than filtering, so a single back-dated commit — an imported history, a
+  // clock-skewed CI box, `git commit --date`, a dormant branch merged late — silently deletes
+  // everything behind it with no error and no diagnostic. Demonstrated on a three-commit repo:
+  // with one commit dated 2019 between two 2024 ones, `--after=2023-01-01` returns one commit
+  // and `--since-as-filter=2023-01-01` returns both of the 2024 ones.
+  //
+  // Both flags also test the COMMITTER date, while everything downstream uses the AUTHOR date
+  // (%ad). They are therefore a cheap prefilter only; the authoritative author-date bounds are
+  // enforced in filterCommits, which is what makes `asOf` mean what validate.ts needs it to.
   if (opts.before) args.push(`--before=${new Date(opts.before).toISOString()}`);
-  if (opts.after) args.push(`--after=${new Date(opts.after).toISOString()}`);
+  if (opts.after) args.push(`--since-as-filter=${new Date(opts.after).toISOString()}`);
 
   const { stdout } = await exec('git', args, { cwd: opts.repo, maxBuffer: MAX_BUFFER });
   return parseLog(stdout);
@@ -167,6 +177,35 @@ export async function readRepoName(repo: string): Promise<string> {
     // No remote is normal for a local-only clone; the directory name is a fine label.
   }
   return repo.replace(/\/+$/, '').split('/').pop() ?? repo;
+}
+
+/**
+ * Every (name, email) pair in the FULL history, with no `--numstat`.
+ *
+ * Identity clustering must see the whole history even though the metrics only need the window.
+ * Clustering unions transitively on display name, so a commit older than the window can be the
+ * only bridge between two in-window aliases of one person — and losing that bridge splits one
+ * contributor into two, which invents a bus factor and reports it as risk. Measured on a
+ * synthetic repo with the in-window edit set held identical: orphanedShare moved 0.00 to 0.50
+ * and the region flipped from unflagged to flagged.
+ *
+ * This is cheap precisely because it omits `--numstat` — the diff walk is what makes the main
+ * log slow, and this call reads only commit headers.
+ */
+export async function readAuthorRoster(
+  repo: string,
+  before?: number
+): Promise<{ name: string; email: string }[]> {
+  const args = ['log', '--no-merges', `--format=%an${UNIT}%ae`];
+  if (before) args.push(`--before=${new Date(before).toISOString()}`);
+  const { stdout } = await exec('git', args, { cwd: repo, maxBuffer: MAX_BUFFER });
+  const out: { name: string; email: string }[] = [];
+  for (const line of stdout.split('\n')) {
+    if (!line) continue;
+    const [name = '', email = ''] = line.split(UNIT);
+    out.push({ name, email });
+  }
+  return out;
 }
 
 /** The unified diff for one commit, used only by the record-coverage stage. */

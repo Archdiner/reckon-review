@@ -15,25 +15,30 @@
   "pathsExcluded": {
    "generated": 9081
   },
-  "identitiesBeforeMerge": 1563,
-  "identitiesAfterMerge": 1370,
+  "identitiesBeforeMerge": 2299,
+  "identitiesAfterMerge": 2011,
+  "spanMonths": 59.99924829354649,
   "regionDepth": 3,
   "regionDepthFallback": false,
-  "regionDepthCandidates": [
+  "regionSplits": [
    {
-    "depth": 0,
+    "step": 0,
+    "split": null,
     "regions": 33
    },
    {
-    "depth": 1,
+    "step": 1,
+    "split": "public",
     "regions": 40
    },
    {
-    "depth": 2,
+    "step": 2,
+    "split": "pkg",
     "regions": 74
    },
    {
-    "depth": 3,
+    "step": 3,
+    "split": "public/app",
     "regions": 80
    }
   ]
@@ -43,7 +48,7 @@
   "windowMonths": 60,
   "orphanedShare": 0.5,
   "concentration": 0.5,
-  "commitsPerMonth": 3.8,
+  "commitsPerMonth": 3.8000476086718513,
   "coveragePercentile": 30,
   "minFlags": 3,
   "regionMinCommits": 15,
@@ -65,8 +70,8 @@
    "inactiveContributors": 2,
    "orphanedShare": 0.85,
    "concentration": 0.8,
-   "commitsPerMonth": 0.3333333333333333,
-   "linesPerMonth": 40.4,
+   "commitsPerMonth": 0.33333750953261854,
+   "linesPerMonth": 40.40050615535336,
    "agentDensity": 0,
    "lastSubstantiveExplanation": 1674063622000,
    "recordCoverage": null,
@@ -87,8 +92,8 @@
    "inactiveContributors": 2,
    "orphanedShare": 0.6666666666666666,
    "concentration": 0.6333333333333333,
-   "commitsPerMonth": 0.5,
-   "linesPerMonth": 91.31666666666666,
+   "commitsPerMonth": 0.5000062642989278,
+   "linesPerMonth": 91.31781073646084,
    "agentDensity": 0,
    "lastSubstantiveExplanation": 1668502300000,
    "recordCoverage": null,
@@ -111,8 +116,8 @@
    "inactiveContributors": 2,
    "orphanedShare": 0.85,
    "concentration": 0.8,
-   "commitsPerMonth": 0.3333333333333333,
-   "linesPerMonth": 40.4,
+   "commitsPerMonth": 0.33333750953261854,
+   "linesPerMonth": 40.40050615535336,
    "agentDensity": 0,
    "lastSubstantiveExplanation": 1674063622000,
    "recordCoverage": null,
@@ -133,8 +138,8 @@
    "inactiveContributors": 2,
    "orphanedShare": 0.6666666666666666,
    "concentration": 0.6333333333333333,
-   "commitsPerMonth": 0.5,
-   "linesPerMonth": 91.31666666666666,
+   "commitsPerMonth": 0.5000062642989278,
+   "linesPerMonth": 91.31781073646084,
    "agentDensity": 0,
    "lastSubstantiveExplanation": 1668502300000,
    "recordCoverage": null,
@@ -163,5 +168,5 @@
   ],
   "source": "study/results/per-pr-scores.csv @ dea2f9383c0798ed7f701994ba3b39ad9d1c55a3, column realPctExplicit"
  },
- "generatedAtUtc": "2026-07-29T16:26:02.035Z"
+ "generatedAtUtc": "2026-07-29T17:14:21.486Z"
 }

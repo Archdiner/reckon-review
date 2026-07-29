@@ -40,7 +40,8 @@ import { buildMap } from './build.js';
 import { readLog, readRepoName } from './gitlog.js';
 import { isBot } from './identity.js';
 import { isExcludedPath } from './filters.js';
-import { regionOf } from './regions.js';
+import { DEFAULT_THRESHOLDS } from './dimensions.js';
+import { regionOf, ROOT } from './regions.js';
 import { bootstrapDifference, mean, quantiles, type Interval } from './stats.js';
 import type { Commit } from './types.js';
 
@@ -109,6 +110,24 @@ export interface ValidationOpts {
   onProgress?: (msg: string) => void;
 }
 
+/**
+ * The region a post-T path belongs to, matching what `buildMap` did.
+ *
+ * `depth` is the map's MAXIMUM region depth, so truncating to it always retains the full region
+ * prefix and the walk-up reproduces `regionFor`'s longest-prefix match — with one divergence
+ * the first version got wrong. When the walk reaches a single path component that is not a
+ * region, `r.includes('/')` is false and the file was dropped, whereas the map sends exactly
+ * those paths to `(root)`. That silently understated `(root)`'s post-T activity by 12 file
+ * touches out of 124,604 on grafana. Small, but it is a map/harness disagreement, and this
+ * harness exists to be trusted.
+ */
+function regionForPath(path: string, depth: number, regionPaths: Set<string>): string | null {
+  let r = regionOf(path, depth);
+  while (!regionPaths.has(r) && r.includes('/')) r = r.slice(0, r.lastIndexOf('/'));
+  if (regionPaths.has(r)) return r;
+  return regionPaths.has(ROOT) ? ROOT : null;
+}
+
 function outcomesFor(
   post: Commit[],
   depth: number,
@@ -119,17 +138,21 @@ function outcomesFor(
   const lastTouch = new Map<string, number>();
 
   for (const c of [...post].sort((a, b) => a.at - b.at)) {
+    // REWORK IS PER REGION, NOT PER COMMIT. The first version computed one boolean for the
+    // whole commit — true if ANY file in it was re-touched — and then credited it to EVERY
+    // region the commit touched. A repo-wide rename then marked every region as reworked at
+    // once: langchain's `libs/langchain/langchain/vectorstores` has exactly one post-T commit,
+    // a 1,518-file rename, and scored a rework rate of 1.000 off it. That is why both arms sat
+    // at 0.85-1.0 everywhere and the metric barely discriminated.
+    const reworkedIn = new Set<string>();
     const regions = new Set<string>();
-    let rework = false;
     for (const f of c.files) {
       if (isExcludedPath(f.path)) continue;
-      let r = regionOf(f.path, depth);
-      // Fold to a known region if this exact depth-cut is not one the map produced.
-      while (!regionPaths.has(r) && r.includes('/')) r = r.slice(0, r.lastIndexOf('/'));
-      if (!regionPaths.has(r)) continue;
+      const r = regionForPath(f.path, depth, regionPaths);
+      if (r === null) continue;
       regions.add(r);
       const prev = lastTouch.get(f.path);
-      if (prev !== undefined && c.at - prev <= 30 * MS_PER_DAY) rework = true;
+      if (prev !== undefined && c.at - prev <= 30 * MS_PER_DAY) reworkedIn.add(r);
       lastTouch.set(f.path, c.at);
     }
     const fix = isFixCommit(c.subject, c.body);
@@ -141,7 +164,7 @@ function outcomesFor(
       }
       e.commits.push(c);
       if (fix) e.fixes++;
-      if (rework) e.rework++;
+      if (reworkedIn.has(r)) e.rework++;
     }
   }
   return byRegion;
@@ -185,7 +208,10 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
       notes.push(`${name}: no commits read, skipped.`);
       continue;
     }
-    const headAt = Math.max(...all.map((c) => c.at));
+    // Not Math.max(...array): the spread throws RangeError above ~125k elements, and a full
+    // clone of a large repository exceeds that. grafana is at 52k today.
+    let headAt = -Infinity;
+    for (const c of all) if (c.at > headAt) headAt = c.at;
     const T = headAt - opts.monthsBack * MS_PER_MONTH;
     const followEnd = Math.min(headAt, T + opts.followMonths * MS_PER_MONTH);
     asOfByRepo[name] = new Date(T).toISOString().slice(0, 10);
@@ -198,8 +224,17 @@ export async function runValidation(opts: ValidationOpts): Promise<ValidationRes
       continue;
     }
 
+    // APPLY THE MAP'S OWN SIZE CAP TO THE OUTCOME WINDOW. buildMap excludes commits touching
+    // more than maxFilesPerCommit files, on the grounds that one vendor drop or repo-wide
+    // rename dominates every metric. The outcome side did not, so the same 1,518-file rename
+    // that was excluded when constructing the arms was counted at full weight when scoring
+    // them. Arms and outcomes must filter alike.
     const post = all.filter(
-      (c) => c.at >= T && c.at <= followEnd && !isBot(c.authorName, c.authorEmail)
+      (c) =>
+        c.at >= T &&
+        c.at <= followEnd &&
+        !isBot(c.authorName, c.authorEmail) &&
+        c.files.length <= DEFAULT_THRESHOLDS.maxFilesPerCommit
     );
     log(`${name}: ${map.regions.length} regions at T, ${map.regions.filter((r) => r.flagged).length} flagged, ${post.length} commits after`);
 
@@ -364,6 +399,8 @@ export function formatValidationReport(r: ValidationResult): string {
   L.push('Means are shown last and on purpose. Outcome rates across regions are skewed, so a');
   L.push('difference of means can describe no actual region.');
   L.push('');
+  const pcF = quantiles(r.regions.filter((x) => x.flagged).map((x) => x.postCommits));
+  const pcU = quantiles(r.regions.filter((x) => !x.flagged).map((x) => x.postCommits));
   for (const c of r.comparisons) {
     L.push(`### ${c.metric}`);
     L.push('');
@@ -379,6 +416,15 @@ export function formatValidationReport(r: ValidationResult): string {
         `95% CI [${p3(c.difference.lo)}, ${p3(c.difference.hi)}], cluster bootstrap over regions.`
     );
     L.push('');
+    // A rate computed from one post-T commit is typeset identically to one from 870 unless the
+    // denominators are shown. Half the flagged arm in the first four-repo run had 1-4 commits,
+    // where a fix rate of exactly 0 is close to arithmetically forced.
+    L.push(
+      `Post-T commits per region — flagged: median ${pcF.p50.toFixed(0)} (p10 ${pcF.p10.toFixed(0)}, ` +
+        `p90 ${pcF.p90.toFixed(0)}); not flagged: median ${pcU.p50.toFixed(0)} (p10 ${pcU.p10.toFixed(0)}, ` +
+        `p90 ${pcU.p90.toFixed(0)}). A rate from a single-figure denominator is not a measurement.`
+    );
+    L.push('');
     const empty = c.flaggedQuantiles.p50 === 0 && c.difference.n === 0;
     const crosses = c.difference.lo <= 0 && c.difference.hi >= 0;
     L.push(
@@ -389,7 +435,18 @@ export function formatValidationReport(r: ValidationResult): string {
         ? '> The interval crosses zero. On this evidence the flag does not predict this outcome. ' +
           'Note that a CI straddling zero is not evidence of equivalence — it may mean the ' +
           'comparison is underpowered, which the region count above will show.'
-        : '> The interval excludes zero in the predicted direction.'
+        : c.difference.estimate > 0
+        ? '> The interval excludes zero in the predicted direction: flagged regions did worse.'
+        : // THE SIGN MUST BE CHECKED, and the first version of this line did not check it.
+          // Every one of these outcomes is oriented so that HIGHER IS WORSE, so a negative
+          // difference means flagged regions did BETTER than unflagged ones — evidence against
+          // the map. The original branch printed "excludes zero in the predicted direction" for
+          // any interval that missed zero, so a pooled fix-rate difference of -0.007 was
+          // rendered as a confirmation. That is the single worst thing this file could do: it
+          // turns the artifact built to be capable of failing into one that cannot.
+          '> **The interval excludes zero in the WRONG direction: flagged regions did BETTER ' +
+          'than unflagged ones.** This is evidence against the map, not for it. Do not cite ' +
+          'this run in support of the flagging rule.'
     );
     L.push('');
   }
@@ -403,10 +460,12 @@ export function formatValidationReport(r: ValidationResult): string {
   L.push('| stratum | metric | flagged n | unflagged n | difference | 95% CI |');
   L.push('| --- | --- | --- | --- | --- | --- |');
   for (const s of r.churnStratified) {
-    L.push(
-      `| ${s.stratum} | ${s.metric} | ${s.nFlagged} | ${s.nUnflagged} | ${p3(s.difference.estimate)} | ` +
-        `[${p3(s.difference.lo)}, ${p3(s.difference.hi)}] |`
-    );
+    // An empty arm produced `0.000 [0.000, 0.000]`, which reads as a precise null rather than
+    // as nothing at all. The caveat existed only in the main tables.
+    const cell = s.nFlagged === 0 || s.nUnflagged === 0
+      ? 'not computed | one arm empty'
+      : `${p3(s.difference.estimate)} | [${p3(s.difference.lo)}, ${p3(s.difference.hi)}]`;
+    L.push(`| ${s.stratum} | ${s.metric} | ${s.nFlagged} | ${s.nUnflagged} | ${cell} |`);
   }
   L.push('');
 

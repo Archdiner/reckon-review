@@ -111,7 +111,8 @@
         available to explain this one.</li>
       <li><strong>Concentration</strong> — share of commits from the single largest contributor.
         High concentration together with a high orphaned share is the bus-factor case.</li>
-      <li><strong>Churn</strong> — commits and lines per month over the window. A region nobody
+      <li><strong>Churn</strong> — commits and lines per month over the 60 months of history
+        actually observed, not over the configured window. A region nobody
         touches is lower risk than a hot one with the same ownership profile.</li>
       <li><strong>Record coverage</strong> — share of mechanism questions about a change that
         the commit records actually answer, generated and scored by the same instrument used on the
@@ -122,18 +123,26 @@
 
     <h2>Thresholds</h2>
     <p>
-      A region is listed when it clears at least <strong>3</strong> of these tests.
+      A region is listed when it clears at least <strong>2</strong> of the
+      3 available tests, <strong>and at least one of those must be an ownership
+      test</strong> (orphaned or concentrated). Churn and thin documentation amplify an ownership
+      problem; on their own they describe a busy or a terse region, which is not what this map is
+      about.
       They are printed because a reader who disagrees with them should be able to see exactly what
       they were.
     </p>
     <ul>
       <li>orphaned share ≥ 50%</li>
       <li>concentration ≥ 50%</li>
-      <li>churn ≥ 3.8 commits / month</li>
+      <li>churn ≥ 3.8000476086718513 commits / month</li>
       <li>record coverage at or below the 30th percentile of the calibration corpus</li>
     </ul>
     <p>
-      Regions are directories at depth 3, chosen to give between 20 and 60 regions for this repository; directories with fewer than
+      Regions are directories cut at <strong>mixed depth</strong>, from the repository root down to
+      3 levels: the tree is split largest-region-first until no single region
+      holds a disproportionate share of the repository, so a big subsystem is broken up while a
+      small directory stays whole. This repository resolved to 68 regions.
+      Directories with fewer than
       15 commits are folded into their parent. Directory rather than file
       because renames make file-level history unreliable, and because four hundred cells is a
       screenshot rather than a decision.
@@ -151,7 +160,7 @@
       <li>Migration, fixture, snapshot and locale directories are marked as low-meaning: high churn,
         little mechanism.</li>
       <li>Contributor identities are merged across addresses before anything is counted
-        (1563 author records → 1370 identities),
+        (2299 author records → 2011 identities),
         because one person committing under three addresses would otherwise invent a bus factor
         that does not exist.</li>
     </ul>

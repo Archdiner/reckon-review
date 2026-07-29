@@ -200,27 +200,44 @@ partly on churn, and a busier region has more opportunities to contain a fix com
 map does not predict anything measurable in git, and that is worth knowing before it is attached
 to ten cold emails. The report prints a null as plainly as it prints a hit.
 
-### What the first real run showed, and why it is not a hit
+### What the real runs showed: the map's predictive claim is NOT supported
 
-On grafana at T = 18 months back, **all four flagged regions received zero commits in the
-following twelve months.** The comparison has an empty arm, and the report says "not computed"
-rather than showing a difference of zero.
+Four repositories — grafana, airflow, supabase, langchain — rebuilt as of 18 months back, 194
+regions with post-cutoff activity, 8 of them flagged.
 
-That is close to mechanical rather than predictive, and the harness says so in its own output:
-the map flags a region for having contributors who stopped committing, and such a region then
-receiving no commits is nearly the same statement twice. It is weak evidence that the ownership
-signal finds genuinely dormant code. It is **not** evidence that flagged regions go worse when
-someone does touch them — which is the claim the outreach would want, and this run does not
-support it.
+| outcome | flagged | not flagged | difference (flagged − not) | 95% CI |
+| --- | --- | --- | --- | --- |
+| fix / revert rate (median) | 0.000 | 0.000 | **−0.007** | [−0.014, −0.001] |
+| rework rate (median) | 0.321 | 0.616 | −0.167 | [−0.444, 0.103] |
 
-It also exposed a design flaw worth naming: the first version required 5 post-T commits before a
-region counted, which deleted every flagged region and reported a difference of exactly zero with
-a zero-width interval — a null that was an artifact of the filter. **Any activity floor
-preferentially deletes the treatment arm**, because dormancy is what the map flags. The floor is
-now 1, and regions with no post-T activity are counted and reported rather than dropped.
+**The fix-rate interval excludes zero in the WRONG direction: flagged regions did *better*.**
+Rework crosses zero. Inside the above-median-churn stratum — the only one with a non-empty
+flagged arm — both point the same wrong way (−0.006 and −0.275). This is evidence against the
+flagging rule, and the report says so in those words rather than reporting "a difference".
 
-Testing the real claim needs repositories where flagged regions are still being modified. That is
-a corpus problem, not a code problem, and it is unfinished.
+Two structural findings sit behind the numbers and matter more than the numbers do:
+
+**An activity floor preferentially deletes the treatment arm.** The first harness required 5
+post-cutoff commits before a region counted. That removed every flagged region on grafana and
+reported a difference of exactly zero with a zero-width interval — a null that was an artifact of
+the filter. Dormancy is what the map flags, so any floor selects against exactly the regions
+under test. The floor is now 1, and regions with no post-cutoff activity are counted and reported
+(20 flagged, 67 not).
+
+**The corpus does not test the orphan claim.** Of the 8 live flagged regions, only 3 have
+orphaned share ≥ 0.5, and those have 1–4 post-cutoff commits. Every flagged region with real
+volume is *concentration*-driven, with orphaned share 0.05–0.10. So these runs test
+"concentrated + hot", not "the people who understood this are gone". `--months-back 30` makes it
+worse, not better: 30 months back the repos were younger and nearly everyone was still active.
+
+The one thing that replicates is dormancy, not defects: 71% of flagged regions received zero
+commits in the following year against 26% of unflagged ones. That is close to a tautology — the
+map flags regions whose contributors stopped, and they then get no commits — and it is not the
+claim the outreach would want.
+
+**Verdict: unsupported, and the orphan-specific claim is still untestable on this corpus.**
+Testing it needs repositories where orphan-flagged regions stay live. That is a corpus problem,
+not a code problem, and it is unfinished.
 
 What it cannot establish, whatever the result: flagging is not random assignment, so this is an
 association and not an effect. Outcomes come from commit messages, which is the same channel the

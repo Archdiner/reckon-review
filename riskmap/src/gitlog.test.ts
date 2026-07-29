@@ -76,5 +76,31 @@ ok('agent footer detected', hasAgentTrailer('subject\n\n🤖 Generated with Clau
 ok('a human co-author is not an agent trailer', !hasAgentTrailer('subject\n\nCo-authored-by: Ada <ada@x.com>'));
 ok('prose mentioning an agent is not a trailer', !hasAgentTrailer('Rewrite the claude client timeout handling'));
 
+console.log('\nregression: git date semantics');
+
+{
+  // Documented rather than asserted against a live repo: `--after` stops TRAVERSAL, so one
+  // back-dated commit deletes everything behind it. readLog therefore uses --since-as-filter,
+  // and the authoritative author-date bounds live in filterCommits because both git flags test
+  // the COMMITTER date while everything downstream uses the AUTHOR date.
+  const { readLog } = await import('./gitlog.js');
+  ok('readLog exists and takes before/after bounds', typeof readLog === 'function');
+}
+
+{
+  const { filterCommits } = await import('./filters.js');
+  const mk = (sha: string, at: number) => ({
+    sha, authorName: 'a', authorEmail: 'a@x', at, subject: 's', body: '',
+    files: [{ path: 'src/a.ts', added: 1, deleted: 0 }], agentTrailer: false, bot: false,
+  });
+  const T = Date.parse('2024-06-01T00:00:00Z');
+  const r = filterCommits(
+    [mk('in', T - 1000), mk('after', T + 1000)],
+    { maxFilesPerCommit: 300, windowStart: T - 1e10, windowEnd: T }
+  );
+  ok('THE COMMITTER-DATE CASE: an author date past asOf is dropped', r.kept.length === 1 && r.kept[0]?.sha === 'in');
+  ok('the drop is counted, not silent', r.dropped.outsideWindow === 1);
+}
+
 console.log(failures === 0 ? '\nall gitlog tests passed' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

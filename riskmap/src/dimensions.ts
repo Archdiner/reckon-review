@@ -110,7 +110,7 @@ export interface RegionInput {
 export function computeRegion(
   input: RegionInput,
   inactive: Set<string>,
-  asOf: number,
+  spanMonths: number,
   t: Thresholds
 ): Region {
   const { region, edits, commits } = input;
@@ -144,7 +144,12 @@ export function computeRegion(
   }
 
   const linesChanged = edits.reduce((n, e) => n + e.added + e.deleted, 0);
-  const months = Math.max(1, t.windowMonths);
+  // Divide by the OBSERVED span, not the configured window. A repo with 18 months of history
+  // was having every churn figure divided by 60, so a region with 20 commits printed 0.33/month
+  // against a true 1.11 — understated threefold, under a footer calling it "commits per month
+  // over the window". The archetypal prospect is a two-year-old private repo, and this is the
+  // number they can falsify fastest, by eye, on their own codebase.
+  const months = Math.max(1, spanMonths);
 
   let agentCommits = 0;
   let lastSubstantive: number | null = null;
@@ -232,10 +237,21 @@ export function applyFlags(
   // three of three and flags nothing. That is how grafana reported zero flagged regions while
   // `pkg/framework` sat at 0.85 orphaned and 0.80 concentrated.
   const ownership = flags.includes('orphaned') || flags.includes('concentrated');
-  const recordTested = recordUsable && r.recordCoveragePercentile !== null;
-  const available = recordTested ? 4 : 3;
-  const need = Math.max(2, Math.min(t.minFlags, available - 1));
+  const { need } = effectiveRule(t, recordUsable && r.recordCoveragePercentile !== null);
   return { ...r, flags, flagged: ownership && flags.length >= need };
+}
+
+/**
+ * The rule that ACTUALLY ran, so the page can print it instead of the configured `minFlags`.
+ *
+ * The footer used to print `t.minFlags` (3) while `applyFlags` required 2, and the shipped
+ * grafana example listed two regions carrying exactly two chips each — the page refuted itself
+ * on the one paragraph meant to make the thresholds auditable. It also never mentioned the
+ * ownership requirement, which is the load-bearing half of the rule.
+ */
+export function effectiveRule(t: Thresholds, recordTested: boolean): { need: number; available: number } {
+  const available = recordTested ? 4 : 3;
+  return { need: Math.max(2, Math.min(t.minFlags, available - 1)), available };
 }
 
 /**

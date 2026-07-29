@@ -53,15 +53,26 @@ function assertNoDiffInScorerPrompt(prompt: string): void {
 function assertRecordNotInQuestionPrompt(prompt: string, message: string): void {
   // The question generator receives the diff and nothing else. A commit message that is a
   // subset of the diff is legitimate (a docs commit adds the prose it describes), so the check
-  // is on distinctive runs rather than on any overlap — the study made exactly this mistake
-  // once and its correction is the reason this is worded this way.
-  const words = message.split(/\s+/).filter((w) => w.length > 3);
+  // is on distinctive CONSECUTIVE runs rather than on any overlap — the study made exactly this
+  // mistake once and its correction is the reason this is worded this way.
+  //
+  // THE FIRST VERSION OF THIS GUARD COULD NOT FIRE. It filtered short words OUT of the message
+  // and then searched the prompt for the joined remainder, so the shingle it looked for did not
+  // occur even in the message it was built from. Handing it the commit message verbatim as the
+  // "prompt" passed. A guard that cannot fire is worse than no guard, because it is read as
+  // evidence. Shingles are now consecutive runs of the ORIGINAL text, normalised only for
+  // whitespace and case.
+  const norm = (x: string) => x.toLowerCase().replace(/\s+/g, ' ').trim();
+  const hay = norm(prompt);
+  const words = norm(message).split(' ').filter(Boolean);
   if (words.length < 8) return;
   for (let i = 0; i + 8 <= words.length; i++) {
     const shingle = words.slice(i, i + 8).join(' ');
-    if (prompt.includes(shingle) && !/^[\w./-]+$/.test(shingle)) {
+    // A run of pure path/identifier tokens can legitimately appear in both.
+    if (/^[\w./-]+( [\w./-]+)*$/.test(shingle) && !/[a-z]{3,} [a-z]{3,} [a-z]{3,}/.test(shingle)) continue;
+    if (hay.includes(shingle)) {
       throw new LeakageError(
-        `A question-generation prompt contained an 8-word run from the commit message: "${shingle.slice(0, 80)}". ` +
+        `A question-generation input contained an 8-word run from the commit message: "${shingle.slice(0, 80)}". ` +
           'Questions must come from the diff alone or the record is being scored against itself.'
       );
     }
@@ -166,9 +177,15 @@ export async function computeCoverage(
       // first few thousand characters. Without it, questions about a wide commit come from its
       // opening files and systematically miss the tail, which would depress coverage for
       // reasons that have nothing to do with how the author wrote.
+      // Guard the INPUT. The earlier version only inspected decompose's OUTPUT, after the call
+      // had already been made — so a leak into the generator prompt was unobservable by the
+      // thing whose error message claimed to be checking exactly that.
+      const digest = diffDigest(diff);
+      assertRecordNotInQuestionPrompt(digest, record);
+
       let questions: { question: string }[];
       try {
-        const out = await decompose(diffDigest(diff), opts.genBackend);
+        const out = await decompose(digest, opts.genBackend);
         questions = out.ok ? out.decisions : [];
       } catch (e) {
         if (e instanceof LeakageError) throw e;
