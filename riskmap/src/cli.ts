@@ -30,6 +30,8 @@ import { runGate, formatGateReport } from './gate.js';
 import { AnthropicBackend, OpenAiBackend } from './vendor/backends.js';
 import type { LlmBackend } from '@reckon/core';
 import { LeakageError } from './coverage.js';
+import { loadCalibration, midrankPercentile } from './calibration.js';
+import { loadPosterData, renderPoster } from './poster.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -253,10 +255,22 @@ async function cmdRegress() {
     );
   }
 
+  // `--coverage` turns this from a two-minute git job into an hours-long model job, and it is the
+  // only way to put a number on the record dimension: the ownership dimensions were testable for
+  // free, which is why they were tested first and why this row was empty until now.
+  let coverage = null as Parameters<typeof runRegression>[0]['coverage'];
+  if (flag('coverage')) {
+    const b = backends();
+    const perRegion = Number(arg('per-region', '8'));
+    console.error(`record coverage as of T enabled — ${b.labels}, ${perRegion} commits per region`);
+    coverage = { backend: b.score, genBackend: b.gen, perRegion };
+  }
+
   const result = await runRegression({
     repos: repos.map((r) => resolve(r)),
     monthsBack: Number(arg('months-back', '18')),
     followMonths: Number(arg('follow-months', '12')),
+    coverage,
     onProgress: (m) => console.error(`  ${m}`),
   });
 
@@ -381,6 +395,30 @@ async function cmdRecordMap() {
   const fromJson = arg('from-json');
   if (fromJson) {
     const saved = JSON.parse(readFileSync(resolve(fromJson), 'utf8')) as Awaited<ReturnType<typeof buildRecordMap>>;
+
+    // PERCENTILES ARE RECOMPUTED, NOT REPLAYED. A stored percentile is a snapshot of a calibration
+    // file, and that file changed: percentiles now run against the substantive-only distribution
+    // (n=711) rather than all 1,000 PRs, because comparing a substantive-only measurement against a
+    // distribution containing 164 empty and 125 trivial records made every position 8 to 17 points
+    // too flattering. A re-render that reprinted the old numbers would keep publishing the error at
+    // no cost. The COVERAGE RATES are replayed untouched — they are the measurement.
+    const cal = loadCalibration();
+    if (cal) {
+      let moved = 0;
+      for (const c of saved.cells) {
+        if (c.coverage === null) continue;
+        const p = midrankPercentile(cal.sorted, c.coverage);
+        if (c.percentile === null || Math.abs(p - c.percentile) > 0.05) moved++;
+        c.percentile = p;
+      }
+      saved.calibration = { corpus: cal.corpus, n: cal.n, shareAtZero: cal.shareAtZero };
+      if (moved > 0) {
+        console.error(
+          `recomputed percentiles against the current calibration (n=${cal.n}): ${moved} cells moved`
+        );
+      }
+    }
+
     const rows: ChartRow[] = saved.cells.map((c) => ({
       path: c.path, coverage: c.coverage, ciLo: c.ciLo, ciHi: c.ciHi, weight: c.weight,
       questions: c.questions, scoredCommits: c.scoredCommits, active: c.active,
@@ -402,6 +440,10 @@ async function cmdRecordMap() {
     const sl = saved.repo.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
     writeFileSync(join(dir, `${sl}-record-map.html`), renderRecordMapPage(saved, svgOnly));
     if (!saved.refused) writeFileSync(join(dir, `${sl}-record-map.svg`), svgOnly);
+    // The JSON is rewritten too. Correcting the page while leaving the machine-readable file
+    // carrying the superseded percentiles would leave the two disagreeing, and the JSON is what
+    // anything downstream reads.
+    writeFileSync(join(dir, `${sl}-record-map.json`), `${JSON.stringify(saved, null, 2)}\n`);
     console.error(`re-rendered ${saved.cells.length} cells from ${fromJson} — no model calls`);
     return;
   }
@@ -463,7 +505,43 @@ async function cmdRecordMap() {
   console.error(`wrote ${outDir}`);
 }
 
+/**
+ * The poster: every measurement in one image, rendered from the published result files.
+ *
+ *   riskmap poster [--out DIR] [--width 1640]
+ *
+ * No model calls and no clone — it reads what has already been measured. That is deliberate: an
+ * artifact that costs nothing to rebuild is one that can be regenerated whenever a number changes,
+ * which is the only way to stop a poster carrying a figure the results no longer support.
+ */
+async function cmdPoster() {
+  const studyResults = resolve(arg('study', join(ROOT, '..', 'study', 'results'))!);
+  const recordMapJson = resolve(
+    arg('record-map', join(ROOT, 'out', 'recordmap', 'grafana-grafana-record-map.json'))!
+  );
+  const gateJson = resolve(arg('gate-json', join(ROOT, 'out', 'gate', 'gate.json'))!);
+
+  const data = loadPosterData({ studyResults, recordMapJson, gateJson });
+  for (const m of data.missing) console.error(`  MISSING, panel omitted: ${m}`);
+
+  const svg = renderPoster(data, {
+    ...(arg('width') ? { width: Number(arg('width')) } : {}),
+    stamp: `${data.prs.length} pull requests · ${data.regions.length} directory areas`,
+  });
+
+  const outDir = resolve(arg('out', join(ROOT, 'out', 'poster'))!);
+  mkdirSync(outDir, { recursive: true });
+  const file = join(outDir, 'record-poster.svg');
+  writeFileSync(file, svg);
+  console.error(
+    `${data.prs.length} pull requests, ${data.regions.length} regions, ${data.gate.length} repositories, ` +
+      `${data.ablation.length} ablation pairs`
+  );
+  console.error(`wrote ${file}`);
+}
+
 const COMMANDS: Record<string, () => void | Promise<void>> = {
+  poster: cmdPoster,
   gate: cmdGate,
   map: cmdMap,
   recordmap: cmdRecordMap,
@@ -477,7 +555,7 @@ const COMMANDS: Record<string, () => void | Promise<void>> = {
 const run = cmd ? COMMANDS[cmd] : undefined;
 if (!run) {
   console.error(
-    'commands: gate --repos <file> | map <clone> | recordmap <clone> | sweep --repos <file> | validate <clone>... | regress <clone>... | calibrate'
+    'commands: gate --repos <file> | map <clone> | recordmap <clone> | poster | sweep --repos <file> | validate <clone>... | regress <clone>... | calibrate'
   );
   process.exit(1);
 }

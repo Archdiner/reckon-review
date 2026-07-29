@@ -225,6 +225,47 @@ export async function readAuthorRoster(
  * further commits, which the validation reads as a correct prediction of dormancy. It is not a
  * prediction. It is arithmetic about a directory that is gone.
  */
+/**
+ * The newest commit reachable from HEAD whose AUTHOR date is at or before `at`.
+ *
+ * Written because `HEAD@{<iso>}` — the reflog notation the builder used to resolve the tree at a
+ * past date — is not a history query at all. A fresh clone has exactly one reflog entry, stamped
+ * at clone time, so `HEAD@{2024-01-01}` silently resolves to HEAD TODAY and every "tree as of T"
+ * question was being answered with today's tree. That defect is recorded in
+ * `validate.ts`'s `mapExtant` docblock; this is the fix.
+ *
+ * AUTHOR date, not committer date, because every date downstream of here is an author date, and
+ * `git rev-list --before` filters on committer date. Rebases can separate the two by months, so
+ * the boundary is found by scanning author dates directly. The scan omits `--numstat`, so it
+ * costs a fraction of what the history read costs.
+ */
+export async function readCommitAt(repo: string, at: number): Promise<string | null> {
+  const { stdout } = await exec(
+    'git',
+    ['log', '--first-parent', '--date=iso-strict', `--format=%H${UNIT}%ad`],
+    { cwd: repo, maxBuffer: MAX_BUFFER }
+  );
+  // --first-parent, so the answer is a commit that was actually the tip of the mainline. A commit
+  // on a side branch has a tree that was never the repository's state, and "which files existed
+  // at T" is a question about the mainline.
+  //
+  // Then the LARGEST author date at or before `at`, not the first match: traversal order is not
+  // date order once anything has been rebased or landed late.
+  let bestSha: string | null = null;
+  let bestAt = -Infinity;
+  for (const line of stdout.split('\n')) {
+    if (!line) continue;
+    const [sha = '', date = ''] = line.split(UNIT);
+    const t = Date.parse(date);
+    if (!Number.isFinite(t) || t > at) continue;
+    if (t > bestAt) {
+      bestAt = t;
+      bestSha = sha;
+    }
+  }
+  return bestSha;
+}
+
 export async function readTreePaths(repo: string, ref = 'HEAD'): Promise<Set<string>> {
   const { stdout } = await exec('git', ['ls-tree', '-r', '--name-only', ref], {
     cwd: repo,

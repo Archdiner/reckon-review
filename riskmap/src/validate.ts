@@ -90,6 +90,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import type { LlmBackend } from '@reckon/core';
 import { buildMap } from './build.js';
 import { readLog, readRepoName, readAuthorRoster } from './gitlog.js';
 import { isBot, resolveIdentities } from './identity.js';
@@ -207,9 +208,10 @@ export interface RegionRecord {
   /**
    * Share of mechanism questions the region's commit records answer.
    *
-   * NULL unless the run scored coverage, which needs a model — `runValidation` and `runRegression`
-   * both build with `coverage: null`, so in practice this is null for every region. It is carried
-   * as null rather than dropped so a consumer can report the reduced n honestly. NEVER IMPUTE IT:
+   * NULL unless the run scored coverage, which needs a model and is opt-in — `regress --coverage`
+   * sets it, a plain run leaves it null. It is carried as null rather than dropped so a consumer
+   * can report the reduced n honestly. It is also null for a region the coverage stage declined to
+   * score: fewer than three substantive commits, or not extant at T. NEVER IMPUTE IT:
    * substituting a mean would turn "we did not measure this" into a measurement of zero variance
    * and give it a coefficient of exactly nothing, which reads identically to a tested null.
    */
@@ -219,11 +221,16 @@ export interface RegionRecord {
   /** Distinct contributor identities touching the region in the window ending at T. */
   contributorsAtT: number;
   /**
-   * The map's OWN `extant` field, as `buildMap` computed it. Kept only so the harness can check
-   * it against `extantAtT`, which is measured from the tree at T directly. They disagree: the
-   * builder resolves the tree with `HEAD@{<date>}`, which is reflog notation, and a fresh clone
-   * has one reflog entry dated at clone time — so under `asOf` the builder silently reads the
-   * tree at HEAD TODAY rather than at T. Nothing here depends on it.
+   * The map's OWN `extant` field, as `buildMap` computed it. Kept so the harness can check it
+   * against `extantAtT`, which is measured from the tree at T directly.
+   *
+   * They USED to disagree, and the reason was a defect: the builder resolved the tree with
+   * `HEAD@{<date>}`, which is reflog notation, and a fresh clone has one reflog entry stamped at
+   * clone time — so under `asOf` it silently read the tree at HEAD TODAY. On grafana at T that was
+   * a 22,129-path tree standing in for a 13,630-path one, with 4,260 paths that existed at T
+   * already dropped. `gitlog.readCommitAt` now finds the mainline commit at T by author date and
+   * the builder reads that tree, so the two fields answer the same question. Nothing in the
+   * analysis depends on `mapExtant`; it is the cross-check that caught the defect.
    */
   mapExtant: boolean;
 
@@ -641,6 +648,17 @@ export interface CollectOpts {
   monthsBack: number;
   followMonths: number;
   /**
+   * Score record coverage AS OF T, so `RegionRecord.recordCoverage` is populated and the one
+   * dimension the n=224 regression could not test becomes testable.
+   *
+   * Costs model calls, which is why it is opt-in and why the two ownership dimensions were tested
+   * first: they were free. The scoring is honest about time in the only way that matters here —
+   * `buildMap` hands `computeCoverage` the commits it kept, and under `asOf` those are strictly
+   * pre-T commits, so the predictor cannot see the outcome window. Nothing else in the coverage
+   * path reads the log.
+   */
+  coverage?: { backend: LlmBackend; genBackend: LlmBackend; perRegion: number } | null;
+  /**
    * Run the author-date/committer-date probe. Only the validation report consumes it; a caller
    * that will not print the verdict should not pay for a full `git log` to compute it.
    */
@@ -682,7 +700,15 @@ export async function collectRepo(repo: string, opts: CollectOpts): Promise<Repo
 
     // The map is built through the SAME builder the product path uses, with asOf set to T.
     // A validation that ran through a different builder would be validating a different tool.
-    const { map } = await buildMap({ repo, asOf: T, coverage: null, onProgress: () => {} });
+    const { map } = await buildMap({
+      repo,
+      asOf: T,
+      coverage: opts.coverage ?? null,
+      // With coverage on, this is a long job (hundreds of model calls per repository) and silence
+      // for an hour is indistinguishable from a hang. Without it, the builder's chatter would
+      // double the length of a run that takes a minute.
+      onProgress: opts.coverage ? (m) => log(`${name}: ${m}`) : () => {},
+    });
     if (map.regions.length === 0) {
       return emptyCollection(name, `${name}: no regions as of T, skipped.`);
     }

@@ -1,5 +1,42 @@
 # The git-history risk map
 
+> ## RETIRED — the risk map is not maintained. The record map is.
+>
+> **What happened.** The risk map ranked regions on ownership: departed share, concentration,
+> churn. Those dimensions were tested — not left unvalidated — by rebuilding the map as of a
+> cutoff 18 months back on four repositories and regressing what happened next on the dimensions
+> themselves rather than on the flagging rule. **At n=224 regions, neither ownership dimension has
+> any association with any outcome**, and two of the point estimates run the wrong way.
+>
+> That result is stronger than it looks, and it is why this is a retirement rather than a to-do.
+> A threshold is a coarsening of a continuous predictor: it discards information and cannot add
+> any. So a continuous null does not merely fail to support *this* rule — **it rules out every
+> threshold on these dimensions**, including the ones a future version would have tried. There is
+> no version of this artifact that these numbers leave standing. See `out/regress/regression.md`.
+>
+> **What survives, and it is the better half.** One dimension was never in the refutation, because
+> it could not be measured for free: **record coverage** — the share of mechanism questions about a
+> change that the written record actually answers. It is the only dimension backed by a corpus
+> (1,000 merged pull requests, scored), it is the one thing the study is *about*, and it needs no
+> claim about people at all. It lives on as **the record map**:
+>
+> ```bash
+> npm run riskmap -- recordmap clones/repo        # coverage only. No ownership, no departure.
+> ```
+>
+> **What still reads as true in this file below the line.** The extraction, the exclusions, the
+> mixed-depth region cut, the identity clustering, the squash gate, the calibration and the
+> information-separation guards are all shared with the record map and are all still in use. The
+> ownership dimensions, the two named findings, the flagging rule and the flag-level validation are
+> the retired part. They are kept rather than deleted because a measured refutation is a result, and
+> deleting it would leave the next person to rediscover it at the same cost.
+>
+> **The one loose end, stated plainly.** Record coverage as a *predictor of future outcomes* was
+> untested when the ownership dimensions were refuted (n=0 — the validation builder did not score
+> coverage at the cutoff). `regress --coverage` now does, so that row is being filled in. Coverage
+> as a *measurement* does not depend on it: the record map describes what is written down today,
+> which is checkable by reading the commits.
+
 A one-page artifact you can generate for any repository from a clone alone. No install, no app
 permissions, no behaviour change from anyone on the team.
 
@@ -124,28 +161,48 @@ requests from Grafana, Airflow, Supabase, LangChain and Prisma, scored with the 
 and the same rubric.
 
 **The build spec asked for the line "this region sits in the bottom decile". That sentence
-cannot be said honestly against this corpus.** 55.7% of the 1,000 PRs score exactly zero, so
-deciles 1 through 5 are all 0.0 and there is no bottom decile to sit in. This is the same
-bimodality the study insists on when it refuses to lead with means.
+cannot be said honestly against this corpus.** 55.7% of the 1,000 PRs score exactly zero — and
+38.4% of the substantive-only comparison set the percentiles actually use — so the bottom deciles
+are all 0.0 and there is no bottom decile to sit in. This is the same bimodality the study insists
+on when it refuses to lead with means.
 
-So the tool reports **midrank percentiles** and says *"lower than or tied with N% of 1,000
-merged pull requests"*, naming the size of the tie. It never says "decile" for a value inside
-the zero mass.
+So the tool reports **midrank percentiles** and says *"lower than or tied with N% of 711 merged
+pull requests"*, naming the size of the tie. It never says "decile" for a value inside the zero
+mass.
 
 One consequence is stated rather than hidden: a zero-coverage region's midrank percentile is
-27.85, so the `undocumented` threshold sits at 30 rather than a round 25 — below 27.85 the test
-could never fire on a region whose commits explained nothing at all.
+**19.2** against the comparison set, so the `undocumented` threshold sits at **22** rather than a
+round 25 — below 19.2 the test could never fire on a region whose commits explained nothing at
+all.
 
 **Regions of different sizes are compared without normalising**, and that is licensed by
 measurement rather than assumed: the study found record coverage flat across a tenfold range of
 change size — under 3 points of movement, against 25-26 points for a measure that does respond
 to size.
 
-**One mismatch worth knowing.** The corpus scores pull-request records (description plus commit
-messages); this tool scores commit messages only, because a clone is its whole dependency and
-descriptions are not in it. A commit-only record is a *subset*, so these percentiles are biased
-**low**. A region that looks fine is fine a fortiori; a region that looks bad may partly be the
-missing channel.
+**The unit mismatch, measured — and the earlier version of this paragraph was wrong in premise
+and in sign.** It used to say: the corpus scores pull-request records (description plus commit
+messages) while this tool scores commit messages only, so a commit-only record is a subset and
+these percentiles are biased **low**. Both halves were false, and measuring it is what showed it.
+
+*The premise.* The study builds its record from `%s` and `%b` of `git log --no-merges` — the
+subject and body of one squash commit. This tool builds its record from `${subject}\n\n${body}`:
+**the same two fields of the same command.** All five corpus repositories were admitted precisely
+because descriptions survive their merge button, so where a squash body holds the description, this
+tool reads it. There is no missing channel to correct for.
+
+*The sign.* The real bias runs the other way, from a source the old paragraph never mentioned. This
+tool scores only commits graded **substantive**, while the 1,000-PR distribution also contains 164
+empty and 125 trivial records that drag it down. Comparing a substantive-only measurement against a
+distribution including them made every percentile **8 to 17 points too flattering** — opposite sign,
+comparable magnitude, and no assumption about missing channels required. Percentiles are now taken
+against the substantive-only distribution (n=711); the unrestricted one stays in the calibration
+file so the restriction is checkable rather than asserted.
+
+*What is still genuinely unknown.* For a repository that does **not** squash, this tool reads one
+commit's message and generates questions from one commit's diff, so numerator and denominator both
+narrow and the net direction is not knowable a priori. That is a per-repository conditional the
+squash detector already computes, and it belongs there rather than in a blanket hedge.
 
 ## The holes, in the order they will bite you
 

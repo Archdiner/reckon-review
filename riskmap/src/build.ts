@@ -7,7 +7,7 @@
  */
 
 import type { LlmBackend } from '@reckon/core';
-import { readLog, readHead, readRepoName, readAuthorRoster, readTreePaths } from './gitlog.js';
+import { readLog, readHead, readRepoName, readAuthorRoster, readTreePaths, readCommitAt } from './gitlog.js';
 import { resolveIdentities, isBot, footprints, isSubstantial } from './identity.js';
 import { filterCommits } from './filters.js';
 import { partitionRegions, foldSmallRegions, regionFor } from './regions.js';
@@ -147,8 +147,15 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
 
   // Which regions still exist. Read from the tree at the analysis point, so the retrospective
   // harness asks the same question as of T rather than as of today.
-  const treePaths = await readTreePaths(opts.repo, opts.asOf ? `HEAD@{${new Date(asOf).toISOString()}}` : 'HEAD')
-    .catch(() => readTreePaths(opts.repo, 'HEAD'));
+  //
+  // THIS USED TO BE `HEAD@{<iso>}` AND WAS WRONG. That is reflog notation, and a fresh clone has
+  // one reflog entry stamped at clone time, so under `asOf` it resolved to HEAD today and the
+  // "extant at T" field was silently a statement about today's tree. `readCommitAt` finds the
+  // mainline commit at T by author date instead.
+  const refAtT = opts.asOf ? await readCommitAt(opts.repo, asOf) : 'HEAD';
+  const treePaths = refAtT
+    ? await readTreePaths(opts.repo, refAtT).catch(() => readTreePaths(opts.repo, 'HEAD'))
+    : await readTreePaths(opts.repo, 'HEAD');
   const extantRegions = new Set<string>();
   for (const p of treePaths) extantRegions.add(regionFor(p, regionSet));
 
@@ -187,8 +194,19 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
   const calibration = loadCalibration();
 
   if (opts.coverage && squash.availability !== 'unavailable') {
-    log(`scoring record coverage, up to ${opts.coverage.perRegion} commits per region`);
-    const result = await computeCoverage(commitsByRegion, {
+    // SCORE ONLY EXTANT REGIONS. A region built entirely from files that no longer exist has no
+    // code left for a record to explain, so a coverage number on it is a statement about deleted
+    // files — the same reason `recordmap.ts` gives cells only to extant regions. It also removes
+    // the regions the retrospective analysis excludes anyway, which is where the model budget was
+    // going: on the four-repo run, roughly a third of regions at T are already gone.
+    const scorable = new Map(
+      [...commitsByRegion].filter(([region]) => extantRegions.has(region))
+    );
+    log(
+      `scoring record coverage over ${scorable.size} extant of ${commitsByRegion.size} regions, ` +
+        `up to ${opts.coverage.perRegion} commits per region`
+    );
+    const result = await computeCoverage(scorable, {
       repo: opts.repo,
       backend: opts.coverage.backend,
       genBackend: opts.coverage.genBackend,

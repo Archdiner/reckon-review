@@ -48,10 +48,11 @@
  *    alongside the pooled one so a reader can see whether the sign is stable or whether the
  *    pooled number is one band shouting.
  *
- * 3. MISSING IS MISSING. `recordCoverage` is null unless the run scored it with a model, which
- *    this one does not, and it is reported as a reduced n rather than imputed. Substituting a
- *    mean would give it zero variance, a coefficient of exactly nothing, and a table row that
- *    reads identically to a tested null. The two are not the same claim.
+ * 3. MISSING IS MISSING. `recordCoverage` is null unless the run scored it with a model, and it is
+ *    reported as a reduced n rather than imputed. Substituting a mean would give it zero variance,
+ *    a coefficient of exactly nothing, and a table row that reads identically to a tested null.
+ *    The two are not the same claim. `--coverage` scores it as of T; without the flag the row is
+ *    printed as n=0 and the report says so.
  *
  * ── WHAT THIS STILL CANNOT DO ──────────────────────────────────────────────────────────────
  *
@@ -63,7 +64,9 @@
  * healthy by construction on the two lexical ones.
  */
 
+import type { LlmBackend } from '@reckon/core';
 import { collectRepo, type RegionRecord } from './validate.js';
+import { LeakageError } from './coverage.js';
 import { bootstrapStatistic, mean, olsSlope, pearson, sd, type Interval } from './stats.js';
 
 /** Fewer than this many regions and the row is labelled underpowered rather than read. */
@@ -277,6 +280,8 @@ export interface RegressionOpts {
   repos: string[];
   monthsBack: number;
   followMonths: number;
+  /** Score record coverage as of T. See `CollectOpts.coverage`. Populates the one untested row. */
+  coverage?: { backend: LlmBackend; genBackend: LlmBackend; perRegion: number } | null;
   onProgress?: (msg: string) => void;
 }
 
@@ -471,14 +476,31 @@ export async function runRegression(opts: RegressionOpts): Promise<RegressionRes
   const byRepo: RegressionResult['sample']['byRepo'] = [];
 
   for (const repo of opts.repos) {
-    const c = await collectRepo(repo, {
-      monthsBack: opts.monthsBack,
-      followMonths: opts.followMonths,
-      // The committer-lag probe feeds the validation report's time-to-merge verdict and nothing
-      // here, so it is not paid for.
-      probeLag: false,
-      ...(opts.onProgress ? { onProgress: opts.onProgress } : {}),
-    });
+    // ONE REPOSITORY'S FAILURE DOES NOT DISCARD THE OTHERS' WORK. Without coverage this loop is a
+    // two-minute git job and a crash costs nothing to re-run. With coverage it is hours of model
+    // calls, and losing three completed repositories to a transport error on the fourth is a real
+    // cost with no analytical justification. The skip is recorded as a note, so a reader sees the
+    // repository is absent rather than inferring it contributed nothing.
+    let c: Awaited<ReturnType<typeof collectRepo>>;
+    try {
+      c = await collectRepo(repo, {
+        monthsBack: opts.monthsBack,
+        followMonths: opts.followMonths,
+        // The committer-lag probe feeds the validation report's time-to-merge verdict and nothing
+        // here, so it is not paid for.
+        probeLag: false,
+        coverage: opts.coverage ?? null,
+        ...(opts.onProgress ? { onProgress: opts.onProgress } : {}),
+      });
+    } catch (e) {
+      // A leak between the diff and the record is never a recoverable per-repository problem: it
+      // means the measurement itself is invalid, and it aborts the run as it does everywhere else.
+      if (e instanceof LeakageError) throw e;
+      const why = e instanceof Error ? e.message : String(e);
+      log(`${repo}: FAILED and skipped — ${why}`);
+      notes.push(`${repo} failed during collection and contributes no regions: ${why}`);
+      continue;
+    }
     structuralGaps.push(...c.structuralGaps);
     if (c.skipped !== null) {
       notes.push(c.skipped);
@@ -591,8 +613,19 @@ export async function runRegression(opts: RegressionOpts): Promise<RegressionRes
       'RECORD COVERAGE WAS NOT SCORED ON THIS RUN, so it has no rows and no coefficient. It is ' +
         'reported as n=0 rather than imputed: a mean-filled predictor would have zero variance, ' +
         'a coefficient of exactly nothing, and a table row indistinguishable from a tested null. ' +
-        'Scoring it needs a model key and a --coverage run of the map as of T, which the ' +
-        'validation builder does not do.'
+        'Scoring it needs a model key and `regress --coverage`, which builds the map as of T with ' +
+        'the coverage stage enabled.'
+    );
+  } else if (noCoverage && noCoverage.missing > 0) {
+    notes.push(
+      `RECORD COVERAGE IS SCORED ON ${noCoverage.present} OF ${analysis.length} ANALYSIS REGIONS. ` +
+        `The ${noCoverage.missing} without it are regions the coverage stage declined rather than ` +
+        'regions that scored zero — fewer than three substantive commits before T, or no questions ' +
+        'generated — and they are dropped from the coverage fits only, not from the others. That ' +
+        'makes the coverage rows a different sample from the rows above them, and the direction of ' +
+        'the difference is knowable: a region with too few substantive commits to score is a region ' +
+        'with a thin written record, so the sample is missing exactly the regions the dimension ' +
+        'would rate worst. Any coverage estimate here is therefore attenuated toward null.'
     );
   }
   if (structuralUnknown > 0) {

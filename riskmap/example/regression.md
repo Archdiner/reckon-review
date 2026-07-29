@@ -1,6 +1,6 @@
 # Regressing the outcomes on the dimensions
 
-The retrospective test in `validation.md` compares regions the map FLAGGED against regions it did not. On this corpus that flag fires on **4 of 293** regions, so every interval in it rests on a treatment arm of 4. The flagging rule has also been rewritten twice, which makes it a moving target rather than a fixed hypothesis.
+The retrospective test in `validation.md` compares regions the map FLAGGED against regions it did not. On this corpus that flag fires on **5 of 293** regions, so every interval in it rests on a treatment arm of 5. The flagging rule has also been rewritten twice, which makes it a moving target rather than a fixed hypothesis.
 
 This document does not test the flag. It regresses the same outcomes on the **dimensions** as continuous predictors, over every region in the map at T. Same question, same data already on disk, two orders of magnitude more of it.
 
@@ -17,8 +17,8 @@ Repositories: grafana/grafana (T=2025-01-27), apache/airflow (T=2025-01-27), sup
 | grafana/grafana | 2025-01-27 | 73 | 0 | 71 |
 | apache/airflow | 2025-01-27 | 72 | 1 | 66 |
 | supabase/supabase | 2025-01-27 | 72 | 3 | 36 |
-| langchain-ai/langchain | 2025-01-27 | 76 | 0 | 51 |
-| **all** | | **293** | **4** | **224** |
+| langchain-ai/langchain | 2025-01-27 | 76 | 1 | 51 |
+| **all** | | **293** | **5** | **224** |
 
 | step | regions | dropped here |
 | --- | --- | --- |
@@ -28,7 +28,7 @@ Repositories: grafana/grafana (T=2025-01-27), apache/airflow (T=2025-01-27), sup
 
 **Why the extant restriction, stated before the results.** 69 of the 293 regions had no non-excluded file left in their directory at T. A deleted directory cannot be rewritten, cannot receive a commit and cannot acquire a contributor: every outcome on it is arithmetic about absent code. Leaving them in would let "this directory does not exist" do the predictive work and would be reported as the dimensions predicting dormancy. Extantness at T is a function of history strictly before T, measured at the same instant the dimensions are, so restricting on it is covariate adjustment and not the collider `validate.ts` documents.
 
-Of the analysis sample, 4 regions are flagged by the current rule. The flag is not used below except in that count.
+Of the analysis sample, 5 regions are flagged by the current rule. The flag is not used below except in that count.
 
 Per-predictor availability on the analysis sample — no value is ever imputed:
 
@@ -344,7 +344,7 @@ No association with: dormant, replacement, reworkRate.
 
 ## 7. Notes
 
-- RECORD COVERAGE WAS NOT SCORED ON THIS RUN, so it has no rows and no coefficient. It is reported as n=0 rather than imputed: a mean-filled predictor would have zero variance, a coefficient of exactly nothing, and a table row indistinguishable from a tested null. Scoring it needs a model key and a --coverage run of the map as of T, which the validation builder does not do.
+- RECORD COVERAGE WAS NOT SCORED ON THIS RUN, so it has no rows and no coefficient. It is reported as n=0 rather than imputed: a mean-filled predictor would have zero variance, a coefficient of exactly nothing, and a table row indistinguishable from a tested null. Scoring it needs a model key and `regress --coverage`, which builds the map as of T with the coverage stage enabled.
 
 ## 8. What this cannot establish
 
