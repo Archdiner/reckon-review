@@ -300,3 +300,42 @@ if (failures > 0) {
   console.log(`${failures} test(s) failed after the depth block`);
   process.exit(1);
 }
+
+// ── REUSING A CLONE THAT IS NOT ONE ──────────────────────────────────────────────────────────
+//
+// `rev-parse --git-dir` succeeds on a clone killed partway through its download, so the sweep's reuse
+// path accepted an empty directory and the first real read failed with `Command failed: git log -1`.
+// That happened to withastro/astro when this sweep was restarted mid-clone. Real git, real temp dirs —
+// the check is about git's actual behaviour, and a mock of git would be a mock of the thing under test.
+console.log('\nan interrupted clone is not a reusable repository');
+{
+  const { isGitRepo, hasCommits } = await import('./recordsweep.js');
+  const { mkdtempSync, rmSync, writeFileSync: wf } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join: j } = await import('node:path');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const ex = promisify(execFile);
+
+  const dir = mkdtempSync(j(tmpdir(), 'riskmap-clone-test-'));
+  try {
+    ok('an ordinary directory is not a git repository', !(await isGitRepo(dir)));
+
+    await ex('git', ['init', '-q'], { cwd: dir });
+    ok('an initialised repository with no commits still passes the git-dir check', await isGitRepo(dir));
+    ok('THE DEFECT: and it has no commits, which is what the reuse path must notice', !(await hasCommits(dir)));
+
+    wf(j(dir, 'f.txt'), 'x');
+    await ex('git', ['add', 'f.txt'], { cwd: dir });
+    await ex('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'first'], { cwd: dir });
+    ok('once it has a commit, both checks pass', (await isGitRepo(dir)) && (await hasCommits(dir)));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+console.log('');
+if (failures > 0) {
+  console.log(`${failures} test(s) failed after the clone-reuse block`);
+  process.exit(1);
+}

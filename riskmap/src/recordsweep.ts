@@ -93,9 +93,28 @@ export interface RecordSweepRow {
 
 const slugOf = (repo: string): string => repo.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
 
-async function isGitRepo(dir: string): Promise<boolean> {
+export async function isGitRepo(dir: string): Promise<boolean> {
   try {
     await exec('git', ['rev-parse', '--git-dir'], { cwd: dir });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Does this clone actually have history, or is it an interrupted download wearing a `.git`?
+ *
+ * `rev-parse --git-dir` succeeds on a clone that was killed partway: the directory is initialised
+ * before any objects arrive, so the reuse path accepted it and the first real read failed with
+ * `Command failed: git log -1`. That is precisely what happened to `withastro/astro` when this sweep
+ * was restarted mid-clone — a self-inflicted case, and the exact case a multi-hour resumable job will
+ * keep inflicting on itself. An unusable clone is deleted and re-cloned rather than reported as a
+ * repository that could not be measured, because it is not a fact about the repository.
+ */
+export async function hasCommits(dir: string): Promise<boolean> {
+  try {
+    await exec('git', ['rev-parse', '--verify', 'HEAD'], { cwd: dir });
     return true;
   } catch {
     return false;
@@ -120,6 +139,14 @@ async function scoreOne(
 ): Promise<{ row: RecordSweepRow; map: RecordMap | null }> {
   const started = Date.now();
   const dir = join(opts.clonesDir, spec.dirName);
+
+  // A clone that exists but holds no commits is an interrupted download, not a repository. Removed and
+  // re-cloned; leaving it would fail every future run against the same directory.
+  if ((await isGitRepo(dir)) && !(await hasCommits(dir))) {
+    log(`existing clone at ${dir} has no commits — an interrupted download; removing and re-cloning`);
+    onCloneCreated(dir);
+    rmSync(dir, { recursive: true, force: true });
+  }
 
   if (!(await isGitRepo(dir))) {
     if (existsSync(dir)) {
