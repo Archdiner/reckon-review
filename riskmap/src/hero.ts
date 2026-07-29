@@ -106,6 +106,9 @@ function block(
   return { svg: s, rows };
 }
 
+/** Row budget for the pooled tail block. Past it, marks stand for several questions each. */
+const TAIL_MAX_ROWS = 22;
+
 export interface HeroOpts {
   width?: number;
   /** Areas drawn as named blocks. The rest are pooled into one trailing block. */
@@ -150,12 +153,19 @@ export function renderHero(areas: HeroArea[], m: HeroMeta, opts: HeroOpts = {}):
   const perRow = Math.max(1, Math.floor((W - 2 * PAD) / COL_W));
   const blocks = [...head, ...(tailArea ? [tailArea] : [])];
 
+  // THE POOLED BLOCK NEEDS ITS OWN GEOMETRY, and getting this wrong is what broke the first
+  // render. The named areas hold ~50 questions each, so 14 columns gives them four tidy rows. The
+  // tail pools fifty-odd areas and carries about two thousand questions — at 14 columns that is
+  // 143 rows, a 1,450px column that made the whole canvas 2,316px tall and reduced the actual
+  // subject of the picture to a strip at the top. It gets a full-width band and as many columns as
+  // fit, which turns the same marks into a compact block instead of a tower.
   const top = 300;
   let bx = PAD;
   let by = top;
   let rowMax = 0;
   let body = '';
-  blocks.forEach((a, i) => {
+  const named_ = blocks.filter((a) => a !== tailArea);
+  named_.forEach((a, i) => {
     if (i > 0 && i % perRow === 0) {
       by += rowMax + 46;
       bx = PAD;
@@ -172,6 +182,35 @@ export function renderHero(areas: HeroArea[], m: HeroMeta, opts: HeroOpts = {}):
     rowMax = Math.max(rowMax, b.rows * (D + GAP) + 22);
     bx += COL_W;
   });
+
+  if (tailArea) {
+    by += rowMax + 52;
+    rowMax = 0;
+    const wideCols = Math.max(1, Math.floor((W - 2 * PAD) / (D + GAP)));
+
+    // A HARD ROW BUDGET, because one mark per question does not scale. On a repository with
+    // hundreds of areas the tail carries tens of thousands of questions, and at one mark each the
+    // canvas grew without limit — 400 areas produced a 2,082px page whose subject was a footer.
+    // Sixteen thousand marks are not legible anyway, so past the budget each mark stands for
+    // several questions and THE LABEL SAYS SO. Downsampling silently would be the dishonest
+    // version of the same fix.
+    const perMark = Math.max(1, Math.ceil(tailArea.total / (wideCols * TAIL_MAX_ROWS)));
+    const scaled: HeroArea = {
+      path: tailArea.path,
+      total: Math.max(1, Math.round(tailArea.total / perMark)),
+      explicit: Math.round(tailArea.explicit / perMark),
+      thin: false,
+    };
+    const b = block(scaled, PAD, by + 22, wideCols, D, GAP);
+    const share = tailArea.explicit / tailArea.total;
+    const scaleNote = perMark > 1 ? ` · one mark = ${perMark} questions` : '';
+    body += `<g>
+  <text x="${PAD}" y="${by + 8}" class="blabel">${esc(tailArea.path)} · ${commas(tailArea.total)} questions${scaleNote}</text>
+  <text x="${W - PAD}" y="${by + 8}" class="bpct" text-anchor="end">${Math.round(share * 100)}%</text>
+  ${b.svg}
+</g>`;
+    rowMax = b.rows * (D + GAP) + 22;
+  }
   const height = by + rowMax + 118;
 
   // ---- the one-line stat bar ----------------------------------------------------------------
@@ -246,7 +285,7 @@ ${body}
  */
 export function renderSwarm(areas: HeroArea[], m: HeroMeta, opts: { width?: number } = {}): string {
   const W = opts.width ?? 1200;
-  const H = 620;
+  const H = 700;
   const PAD = 64;
   const usable = areas.filter((a) => a.total > 0);
   const totalQ = usable.reduce((n, a) => n + a.total, 0);
@@ -260,7 +299,9 @@ export function renderSwarm(areas: HeroArea[], m: HeroMeta, opts: { width?: numb
 
   const plotL = PAD + 12;
   const plotR = W - PAD - 12;
-  const cy0 = 372;
+  const bandTop = 200;
+  const bandBot = H - 108;
+  const cy0 = (bandTop + bandBot) / 2;
   const xs = (v: number) => plotL + ((v - lo) / (hi - lo)) * (plotR - plotL);
 
   // Radius on area, not on diameter — a directory with four times the change should look four
@@ -273,27 +314,36 @@ export function renderSwarm(areas: HeroArea[], m: HeroMeta, opts: { width?: numb
   const nodes: Node[] = [...usable]
     .sort((a, b) => b.total - a.total)
     .map((a) => ({ a, x: xs(a.explicit / a.total), y: cy0, r: rr(a.total) }));
-  for (let pass = 0; pass < 400; pass++) {
+  // CLAMPED, which the first version was not — discs drifted to y=757 inside a 620-tall canvas,
+  // over the headline at one end and off the page at the other. Every pass pins y back inside the
+  // band, so relaxation can only ever redistribute within the space that exists. A few residual
+  // overlaps in a crowded column are a far smaller problem than a disc rendered off-canvas.
+  const clamp = (n: Node) => {
+    n.y = Math.min(bandBot - n.r, Math.max(bandTop + n.r, n.y));
+  };
+  for (let pass = 0; pass < 600; pass++) {
     let moved = false;
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
         const p = nodes[i]!;
         const q = nodes[j]!;
-        const dx = q.x - p.x;
         const dy = q.y - p.y;
         const need = p.r + q.r + 2.5;
-        const dist = Math.hypot(dx, dy) || 0.01;
+        const dist = Math.hypot(q.x - p.x, dy) || 0.01;
         if (dist < need) {
           const push = (need - dist) / 2;
           const uy = dy === 0 ? (i % 2 ? 1 : -1) : dy / dist;
           p.y -= uy * push;
           q.y += uy * push;
+          clamp(p);
+          clamp(q);
           moved = true;
         }
       }
     }
     if (!moved) break;
   }
+  for (const n of nodes) clamp(n);
 
   const band = (v: number) => {
     const t = median === 0 ? 1 : v / median;
