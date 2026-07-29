@@ -1,0 +1,9 @@
+# The corpus is derived data: ~1000 PR directories holding raw diffs, several hundred MB.
+# It is rebuilt deterministically by `study clone && study collect` (seeded sampling), so
+# committing it would bloat the repo to reproduce something a command already reproduces.
+#
+# What SHOULD be published alongside a writeup is the per-PR scores CSV and the report, not
+# the diffs. Copy those out of data/out/ and commit them deliberately.
+data/
+node_modules/
+package-lock.json
