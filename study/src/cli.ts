@@ -28,6 +28,7 @@ import { generateSynthetic } from './stage3_synthetic.js';
 import { scoreCorpus, type ScoreMode } from './stage4_score.js';
 import { analyze, writeCsvs, formatReport } from './stage6_analyze.js';
 import { exportWorksheet, compareLabels } from './handlabel.js';
+import { describeCorpus } from './describe.js';
 import { backendFor } from './backends.js';
 import { LeakageError } from './guard.js';
 
@@ -166,9 +167,17 @@ function cmdHandlabelCompare() {
   console.log(text);
 }
 
+function cmdDescribe() {
+  mkdirSync(OUT, { recursive: true });
+  const text = describeCorpus(PRS);
+  writeFileSync(join(OUT, 'corpus-summary.md'), `${text}\n`);
+  console.log(text);
+}
+
 const COMMANDS: Record<string, () => void | Promise<void>> = {
   clone: cmdClone,
   collect: cmdCollect,
+  describe: cmdDescribe,
   questions: cmdQuestions,
   synthetic: cmdSynthetic,
   score: cmdScore,
@@ -184,6 +193,7 @@ async function main() {
     console.log('Commands:');
     console.log('  clone                     clone the admitted repos (--depth N to shallow-clone)');
     console.log('  collect                   build the corpus (--pilot, --agents N, --humans N, --since DATE)');
+    console.log('  describe                  corpus composition and matching feasibility (no model calls)');
     console.log('  questions                 stage 2: mechanism questions from the diff alone (--force)');
     console.log('  synthetic                 stage 3: synthetic PR description from the diff alone (--force)');
     console.log('  score                     stage 4: blinded scoring (--score-mode paired|independent, --force)');

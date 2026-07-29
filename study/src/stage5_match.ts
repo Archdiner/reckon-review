@@ -59,9 +59,29 @@ function mulberry32(seed: number) {
  *        `['bot-author']` reruns the contrast on genuine agent AUTHORSHIP only, which is the
  *        robustness check the weaker trailer-based labels demand (see provenance.ts).
  */
-export function matchCorpus(root: string, seed: string, evidenceFilter?: string[]): MatchResult {
+/**
+ * Matching key.
+ *
+ * `repo-lang-size` additionally requires both PRs to come from the SAME repository, which
+ * removes project culture as a confound. It matters here: the agent arm is concentrated in
+ * grafana and prisma, and prisma contributes 66 agent PRs against 1 human one. Under
+ * `lang-size` a prisma agent PR can be paired with a grafana human PR, and any difference
+ * between those two projects' documentation norms would be read as an agent-vs-human effect.
+ *
+ * `repo-lang-size` is therefore the default, and the looser key is kept only as a
+ * sensitivity check — if the two disagree, the looser one is measuring repo culture.
+ */
+export type MatchKey = 'repo-lang-size' | 'lang-size';
+
+export function matchCorpus(
+  root: string,
+  seed: string,
+  evidenceFilter?: string[],
+  requireScores = true,
+  matchKey: MatchKey = 'repo-lang-size'
+): MatchResult {
   const metas: PrMeta[] = prDirs(root)
-    .filter((d) => has(d, 'scores.json'))
+    .filter((d) => !requireScores || has(d, 'scores.json'))
     .map(readMeta);
 
   const rng = mulberry32(seedFrom(seed));
@@ -79,7 +99,10 @@ export function matchCorpus(root: string, seed: string, evidenceFilter?: string[
   );
   const humans = metas.filter((m) => m.provenance === 'human');
 
-  const key = (m: PrMeta) => `${m.language}|${m.sizeBucket}`;
+  const key = (m: PrMeta) =>
+    matchKey === 'repo-lang-size'
+      ? `${m.repo}|${m.language}|${m.sizeBucket}`
+      : `${m.language}|${m.sizeBucket}`;
   const bucket = <T,>(xs: PrMeta[]) => {
     const map = new Map<string, PrMeta[]>();
     for (const m of xs) {

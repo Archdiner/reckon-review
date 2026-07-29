@@ -17,9 +17,30 @@ and 4 have never run against a real model. **There are no findings in this repos
 nothing here should be cited as one.** What exists is:
 
 - the full pipeline, typechecked, with its leakage guards under test;
-- the collected corpus (see `data/out/collect-report.json` after running stage 1);
+- a collected corpus of **1000 PRs** (500 agent-attested, 500 human) across five repositories,
+  drawn from 47,877 eligible merges, with 511 candidates dropped by the exclusion filter;
+- the corpus description below, all of which is computable without a model;
 - an end-to-end dry run on a deterministic offline backend, proving the plumbing and the
   guards work, whose output is stamped `MOCK RUN — THESE ARE NOT FINDINGS`.
+
+### What the corpus already shows, before any scoring
+
+These are properties of the sample, not answers to the study's questions. Two are worth
+knowing now because they change what can be claimed later.
+
+- **The agent label is weak.** 93% of the agent arm is a `Co-authored-by` trailer, and only
+  14 PRs are authored by an actual agent account. Question C can be asked about
+  agent-*assisted* work only. See "What the agent label means".
+- **Humans leave the description blank far more often than agents do.** The surviving record
+  is the title alone for **28.0%** of human PRs but only **2.6%** of agent ones. This is a
+  raw base rate, not a mechanism-answerability result, but it is the direction the study's
+  thesis predicts and it is measurable without a model.
+- Agent PRs are substantially larger — median 208 changed lines against 117 — which is
+  exactly why matching is not optional.
+- Only 3.3% of records share any 8-word prose run with their own diff, so "the description is
+  just copied out of the changed files" is not a significant confound in this corpus.
+- **342 matched pairs** are available within repo, so question C has adequate power even
+  though its label is weak.
 
 To produce actual numbers, set a key and run stages 2-4:
 
@@ -56,8 +77,16 @@ artifact. The claim is not "descriptions are bad". Descriptions are probably fin
 is that descriptions have become *reproducible*, so their completeness no longer tells you
 whether a person understood the change.
 
-**C. The agent split.** Agent-authored versus human-authored, matched on language and diff
-size.
+**C. The agent split.** Agent-attested versus human-authored, matched on repo, language and
+diff size. See "What the agent label means" — on this corpus the label supports a claim about
+agent-*assisted* PRs only.
+
+Matching is on **repo × language × size bucket**. Including the repo removes project culture
+as a confound, and it is not optional here: the agent arm concentrates in grafana and prisma,
+and prisma contributes 66 agent PRs against 1 human one, so a cross-repo pairing could read a
+difference between two projects' documentation norms as an agent effect. It costs little —
+342 pairs within repo versus 374 ignoring it — and `analyze` reports both so the choice is
+visible.
 
 ---
 
@@ -187,8 +216,18 @@ difference is reportable:
 - `agent-footer` — a "Generated with Claude Code" style footer. Same caveat.
 
 Every PR records which fired and the literal matched string, and `analyze` reruns the contrast
-on `bot-author` alone. **If the contrast holds pooled but vanishes there, the pooled result is
-about agent-assisted PRs, not agent-authored ones, and must be described that way.**
+on `bot-author` alone.
+
+**On the collected corpus this is decisive, and it is bad news for question C.** Of the 500
+agent-attested PRs, 465 (93.0%) are `agent-trailer`, 21 (4.2%) are `agent-footer`, and only 14
+(2.8%) are `bot-author`. Those 14 yield 14 matched pairs, which cannot support a robustness
+check.
+
+So as collected, **this corpus can only speak about agent-ASSISTED pull requests, not
+agent-authored ones**, and any writeup must say so in those words. A headline of the form
+"AI-written PRs document themselves well" is not supported by this sample. Restoring the
+stronger claim needs either AIDev's labels (unreachable here) or targeted collection of
+bot-authored PRs from repos where agents open PRs under their own accounts.
 
 Direction of bias: trailer-attested PRs are the ones where a human was engaged enough to keep
 the attribution, so this labelling likely *understates* any agent-vs-human difference.

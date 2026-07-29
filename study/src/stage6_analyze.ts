@@ -96,6 +96,9 @@ export interface Analysis {
     strata: { key: string; agent: number; human: number; paired: number }[];
   } | null;
   matchedBotAuthorOnly: { pairs: number; agentRealMean: number; humanRealMean: number; diff: number; ci: [number, number] } | null;
+  /** Same contrast with the repo constraint dropped. If it disagrees with the default, the
+   *  looser key is picking up project culture rather than authorship. */
+  matchedIgnoringRepo: { pairs: number; diff: number; ci: [number, number] } | null;
   bySize: { bucket: string; n: number; realMean: number; realPctExplicit: number; syntheticMean: number }[];
   byRepo: { repo: string; n: number; realMean: number; syntheticMean: number }[];
   emptyBodyShare: number;
@@ -174,6 +177,13 @@ export function analyze(root: string): Analysis {
     };
   }
 
+  let matchedLoose: Analysis['matchedIgnoringRepo'] = null;
+  const ml = matchCorpus(root, 'match-v1', undefined, true, 'lang-size');
+  if (ml.pairs.length >= 2) {
+    const d = ml.pairs.map((p) => byId.get(p.agent)!.realMean - byId.get(p.human)!.realMean);
+    matchedLoose = { pairs: ml.pairs.length, diff: mean(d), ci: bootstrapCI(d) };
+  }
+
   let matchedBot: Analysis['matchedBotAuthorOnly'] = null;
   const mb = matchCorpus(root, 'match-v1', ['bot-author']);
   if (mb.pairs.length >= 2) {
@@ -239,6 +249,7 @@ export function analyze(root: string): Analysis {
     byProvenance: [armStats('agent'), armStats('human')],
     matched,
     matchedBotAuthorOnly: matchedBot,
+    matchedIgnoringRepo: matchedLoose,
     bySize,
     byRepo,
     emptyBodyShare: (rows.filter((r) => r.emptyBody).length / Math.max(1, rows.length)) * 100,
@@ -317,21 +328,30 @@ export function formatReport(a: Analysis): string {
   L.push('around zero. A wide interval means the study was underpowered, not that the gap is absent.');
   L.push('');
 
-  L.push('## 3. Agent-authored vs human-authored');
+  // "attested", not "authored": on the collected corpus 93% of the agent arm is a
+  // Co-authored-by trailer, which evidences assistance rather than authorship.
+  L.push('## 3. Agent-attested vs human-authored');
   L.push('');
   for (const p of a.byProvenance) {
     L.push(`- ${p.arm}: n=${p.n}, real mean ${f2(p.realMean)}, explicit ${f1(p.realPctExplicit)}%`);
   }
   L.push('');
   if (a.matched) {
-    L.push(`Matched on language x size bucket: **${a.matched.pairs} pairs**`);
+    L.push(`Matched on repo x language x size bucket: **${a.matched.pairs} pairs**`);
     L.push(`(discarded as unmatched: ${a.matched.unmatched.agent} agent, ${a.matched.unmatched.human} human)`);
     L.push(`Agent ${f2(a.matched.agentRealMean)} vs human ${f2(a.matched.humanRealMean)}; ` +
       `difference **${f2(a.matched.diff)}** 95% CI **[${f2(a.matched.ci[0])}, ${f2(a.matched.ci[1])}]**`);
     L.push('');
-    L.push('Top strata (language|size: agent/human/paired):');
+    L.push('Top strata (repo|language|size: agent/human/paired):');
     for (const s of a.matched.strata.slice(0, 8)) L.push(`  - ${s.key}: ${s.agent}/${s.human}/${s.paired}`);
     L.push('');
+    if (a.matchedIgnoringRepo) {
+      L.push(`Sensitivity — same contrast without the repo constraint (${a.matchedIgnoringRepo.pairs} pairs): ` +
+        `difference **${f2(a.matchedIgnoringRepo.diff)}** 95% CI **[${f2(a.matchedIgnoringRepo.ci[0])}, ${f2(a.matchedIgnoringRepo.ci[1])}]**`);
+      L.push('If this disagrees with the within-repo figure, the looser match is measuring');
+      L.push('project culture rather than who wrote the change. Report the within-repo one.');
+      L.push('');
+    }
   } else {
     L.push('_Not enough matched pairs to report._');
     L.push('');
