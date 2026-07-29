@@ -368,9 +368,80 @@ async function cmdGate() {
   console.error(`wrote ${join(outDir, 'gate.md')}`);
 }
 
+/**
+ * The record map. A separate command rather than a flag on `map`, because it is a different
+ * artifact making a narrower claim: coverage only, no ownership, no departure inference, and no
+ * person data of any kind. Keeping them apart is what stops the narrow claim inheriting the
+ * unvalidated ones.
+ */
+async function cmdRecordMap() {
+  // RE-RENDER PATH. Scoring is the expensive half and drawing is free, so a saved run can be
+  // recoloured or relaid out without spending a single model call again.
+  const fromJson = arg('from-json');
+  if (fromJson) {
+    const saved = JSON.parse(readFileSync(resolve(fromJson), 'utf8')) as Awaited<ReturnType<typeof buildRecordMap>>;
+    const cells: TreemapCell[] = saved.cells.map((c) => ({
+      path: c.path, weight: c.weight, coverage: c.coverage, ciLo: c.ciLo, ciHi: c.ciHi,
+      scoredCommits: c.scoredCommits, ciHalfWidth: c.ciHalfWidth, active: c.active,
+    }));
+    const svgOnly = saved.refused ? '' : renderTreemapSvg(cells, { width: 960, height: 560 });
+    const dir = resolve(arg('out', join(ROOT, 'out', 'recordmap'))!);
+    mkdirSync(dir, { recursive: true });
+    const sl = saved.repo.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    writeFileSync(join(dir, `${sl}-record-map.html`), renderRecordMapPage(saved, svgOnly));
+    if (!saved.refused) writeFileSync(join(dir, `${sl}-record-map.svg`), svgOnly);
+    console.error(`re-rendered ${saved.cells.length} cells from ${fromJson} — no model calls`);
+    return;
+  }
+
+  const repo = positional(0);
+  if (!repo) {
+    throw new Error(
+      'usage: riskmap recordmap <path-to-clone> [--per-region N] [--concurrency N] [--out DIR]\n' +
+        '       riskmap recordmap --from-json <file>   re-render without re-scoring'
+    );
+  }
+  const b = backends();
+  console.error(`record map — ${b.labels}`);
+
+  const map = await buildRecordMap({
+    repo: resolve(repo),
+    backend: b.score,
+    genBackend: b.gen,
+    perRegion: Number(arg('per-region', String(DEFAULT_PER_REGION))),
+    concurrency: Number(arg('concurrency', '8')),
+    ...(arg('window') ? { windowMonths: Number(arg('window')) } : {}),
+    ...(arg('recent') ? { recentMonths: Number(arg('recent')) } : {}),
+    onProgress: (m) => console.error(`  ${m}`),
+  });
+
+  const cells: TreemapCell[] = map.cells.map((c) => ({
+    path: c.path, weight: c.weight, coverage: c.coverage, ciLo: c.ciLo, ciHi: c.ciHi,
+    scoredCommits: c.scoredCommits, ciHalfWidth: c.ciHalfWidth, active: c.active,
+  }));
+  const svg = map.refused ? '' : renderTreemapSvg(cells, { width: 960, height: 560 });
+
+  const outDir = resolve(arg('out', join(ROOT, 'out', 'recordmap'))!);
+  mkdirSync(outDir, { recursive: true });
+  const slug = map.repo.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  writeFileSync(join(outDir, `${slug}-record-map.html`), renderRecordMapPage(map, svg));
+  writeFileSync(join(outDir, `${slug}-record-map.json`), `${JSON.stringify(map, null, 2)}\n`);
+  if (!map.refused) writeFileSync(join(outDir, `${slug}-record-map.svg`), svg);
+
+  console.error('');
+  if (map.refused) console.error('GATE REFUSED — no map drawn. The page explains why.');
+  else {
+    const col = map.cells.filter((c) => c.greyReason === null).length;
+    console.error(`${col} of ${map.cells.length} regions coloured, ${map.cells.length - col} greyed`);
+    if (map.overall) console.error(`overall: ${(map.overall.rate * 100).toFixed(1)}% explained over ${map.overall.total} questions`);
+  }
+  console.error(`wrote ${outDir}`);
+}
+
 const COMMANDS: Record<string, () => void | Promise<void>> = {
   gate: cmdGate,
   map: cmdMap,
+  recordmap: cmdRecordMap,
   sweep: cmdSweep,
   'sweep-build': cmdSweepBuild,
   validate: cmdValidate,
@@ -381,7 +452,7 @@ const COMMANDS: Record<string, () => void | Promise<void>> = {
 const run = cmd ? COMMANDS[cmd] : undefined;
 if (!run) {
   console.error(
-    'commands: map <clone> | sweep --repos <file> | validate <clone>... | regress <clone>... | calibrate'
+    'commands: gate --repos <file> | map <clone> | recordmap <clone> | sweep --repos <file> | validate <clone>... | regress <clone>... | calibrate'
   );
   process.exit(1);
 }
