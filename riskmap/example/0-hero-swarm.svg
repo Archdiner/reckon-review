@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-label="One circle per area, placed by how much of its change the record explains and sized by how much changed">
+<defs><linearGradient id="sg" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#08202f"/><stop offset="1" stop-color="#0f3854"/>
+</linearGradient></defs>
+<style>
+  #sw text { font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; fill:#eaf3f7 }
+  #sw .kicker { font-size:13px; fill:#4a90ab; letter-spacing:.14em; font-weight:700 }
+  #sw .big { font-size:58px; font-weight:800; letter-spacing:-.03em }
+  #sw .amber { fill:#f0a94a }
+  #sw .lede { font-size:16px; fill:#a9c6d6 }
+  #sw .slabel { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; font-size:10.5px; fill:#bcd6e2 }
+  #sw .tick { font-size:12px; fill:#7396ab; font-variant-numeric:tabular-nums }
+  #sw .foot { font-size:11.5px; fill:#7396ab }
+  #sw .d0 { fill:#f0a94a } #sw .d1 { fill:#c98f52 } #sw .d2 { fill:#6f8fa2 }
+  #sw .d3 { fill:#4a90ab } #sw .d4 { fill:#7fc4d8 }
+  #sw .dthin { fill:none; stroke:#3a6d86; stroke-width:1.5; stroke-dasharray:3 3 }
+  #sw .axis { stroke:#1c4460; stroke-width:1 }
+  #sw .med { stroke:#a9c6d6; stroke-width:1; stroke-dasharray:5 4; opacity:.6 }
+</style>
+<g id="sw">
+<rect width="1200" height="620" fill="url(#sg)"/>
+<text x="64" y="58" class="kicker">GRAFANA/GRAFANA · 24 MONTHS · 18,545 COMMITS</text>
+<text x="64" y="120" class="big">Some corners of this codebase</text>
+<text x="64" y="176" class="big">explain <tspan class="amber">almost nothing</tspan> of what</text>
+<text x="64" y="232" class="big">they change.</text>
+<text x="1136" y="104" class="lede" text-anchor="end">63 areas · 2,885 questions</text>
+<text x="1136" y="128" class="lede" text-anchor="end">25% answered overall</text>
+<text x="1136" y="152" class="lede" text-anchor="end">circle size = lines changed</text>
+
+<line x1="76" y1="524" x2="1124" y2="524" class="axis"/>
+<line x1="455.4" y1="180" x2="455.4" y2="524" class="med"/>
+<text x="455.4" y="172" class="tick" text-anchor="middle">median 24%</text>
+<circle cx="319.4" cy="579.9" r="33.0" class="d1"/><circle cx="288.9" cy="158.2" r="33.0" class="d1"/><circle cx="231.0" cy="122.1" r="32.8" class="d0"/><circle cx="696.1" cy="271.3" r="32.8" class="d4"/><circle cx="676.7" cy="466.8" r="32.5" class="d3"/><circle cx="265.7" cy="378.8" r="32.5" class="d1"/><circle cx="455.4" cy="628.3" r="32.5" class="d2"/><circle cx="455.4" cy="172.2" r="32.5" class="d2"/><circle cx="581.8" cy="556.6" r="32.5" class="d3"/><circle cx="487.0" cy="687.9" r="32.5" class="d2"/><circle cx="234.1" cy="591.2" r="32.5" class="d0"/><circle cx="720.9" cy="406.3" r="32.3" class="d4"/><circle cx="559.7" cy="192.1" r="32.3" class="d3"/><circle cx="398.5" cy="378.8" r="32.3" class="d2"/><circle cx="237.2" cy="276.2" r="32.3" class="d0"/><circle cx="269.5" cy="534.1" r="32.3" class="d1"/><circle cx="914.4" cy="400.6" r="32.3" class="d4"/><circle cx="430.7" cy="724.8" r="32.3" class="d2"/><circle cx="108.2" cy="403.9" r="32.3" class="d0"/><circle cx="334.0" cy="212.2" r="32.3" class="d1"/><circle cx="366.2" cy="312.0" r="32.3" class="d1"/><circle cx="334.0" cy="395.6" r="32.3" class="d1"/><circle cx="503.8" cy="581.7" r="32.0" class="d2"/><circle cx="569.6" cy="302.4" r="32.0" class="d3"/><circle cx="569.6" cy="461.2" r="32.0" class="d3"/><circle cx="602.5" cy="243.4" r="32.0" class="d3"/><circle cx="767.0" cy="454.6" r="32.0" class="d4"/><circle cx="503.8" cy="32.3" r="32.0" class="d2"/><circle cx="503.8" cy="348.5" r="32.0" class="d2"/><circle cx="405.0" cy="584.1" r="32.0" class="d2"/><circle cx="635.4" cy="301.1" r="32.0" class="d3"/><circle cx="1063.1" cy="372.0" r="32.0" class="d4"/><circle cx="437.9" cy="325.1" r="32.0" class="d2"/><circle cx="747.8" cy="345.5" r="31.7" class="d4"/><circle cx="680.6" cy="350.0" r="31.7" class="d3"/><circle cx="647.0" cy="407.0" r="31.7" class="d3"/><circle cx="445.5" cy="63.8" r="31.7" class="d2"/><circle cx="982.9" cy="380.3" r="31.7" class="d4"/><circle cx="311.1" cy="274.7" r="31.7" class="d1"/><circle cx="411.9" cy="121.6" r="31.7" class="d2"/><circle cx="243.9" cy="472.7" r="31.7" class="d0"/><circle cx="762.1" cy="281.3" r="31.5" class="d4"/><circle cx="419.0" cy="483.3" r="31.5" class="d2"/><circle cx="247.5" cy="210.8" r="31.5" class="d0"/><circle cx="487.7" cy="114.2" r="31.5" class="d2"/><circle cx="453.3" cy="539.1" r="31.5" class="d2"/><circle cx="213.2" cy="338.0" r="31.5" class="d0"/><circle cx="601.8" cy="359.7" r="31.2" class="d3"/><circle cx="496.6" cy="224.0" r="31.2" class="d2"/><circle cx="636.8" cy="519.7" r="31.2" class="d3"/><circle cx="426.5" cy="252.9" r="31.2" class="d2"/><circle cx="496.6" cy="473.4" r="31.2" class="d2"/><circle cx="935.9" cy="335.1" r="31.0" class="d4"/><circle cx="470.1" cy="404.7" r="31.0" class="d2"/><circle cx="362.6" cy="515.6" r="31.0" class="d1"/><circle cx="116.3" cy="340.1" r="29.6" class="d0"/><circle cx="369.1" cy="447.0" r="27.5" class="d1"/><circle cx="479.1" cy="281.0" r="25.9" class="dthin"/><circle cx="314.9" cy="457.8" r="25.6" class="d1"/><circle cx="222.6" cy="418.7" r="23.8" class="d0"/><circle cx="306.3" cy="332.1" r="23.4" class="d1"/><circle cx="421.5" cy="429.1" r="20.4" class="dthin"/><circle cx="572.1" cy="406.9" r="19.9" class="dthin"/><text x="319.4" y="627.9" class="slabel" text-anchor="middle">packages</text><text x="288.9" y="206.2" class="slabel" text-anchor="middle">pkg/extensions</text><text x="231.0" y="169.8" class="slabel" text-anchor="middle">…lic/app/features/logs</text><text x="265.7" y="426.3" class="slabel" text-anchor="middle">(root)</text><text x="455.4" y="675.8" class="slabel" text-anchor="middle">devenv</text><text x="455.4" y="219.7" class="slabel" text-anchor="middle">…/app/features/explore</text><text x="76.0" y="546" class="tick" text-anchor="middle">0%</text><text x="338.0" y="546" class="tick" text-anchor="middle">16%</text><text x="600.0" y="546" class="tick" text-anchor="middle">33%</text><text x="862.0" y="546" class="tick" text-anchor="middle">49%</text><text x="1124.0" y="546" class="tick" text-anchor="middle">65%</text>
+<text x="76" y="568" class="tick">← less of the change explained</text>
+<text x="1124" y="568" class="tick" text-anchor="end">more explained →</text>
+<text x="64" y="594" class="foot">Questions come from each diff alone and are scored against commit messages by a model that never sees the code. Dashed circles are estimates too thin to lean on. No individual is measured.</text>
+</g>
+</svg>
