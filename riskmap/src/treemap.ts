@@ -313,12 +313,37 @@ export const DARK_RAMP: string[] = ramp(
   COVERAGE_STEPS
 );
 
+/** Near-black ink, for the pale end of a ramp. */
 const INK_ON_LIGHT = '#1a1418';
+/** Near-white ink, for the dark end of a ramp. */
 const INK_ON_DARK = '#f7f4f2';
+
+/**
+ * Where to switch between the two inks.
+ *
+ * NOT the middle of the range. Contrast is a ratio of (L + 0.05), so the point where near-black
+ * and near-white are equally legible sits at L ≈ 0.19, not at 0.5 — picking the midpoint puts
+ * white text on a mid-ramp orange at about 2:1, which is unreadable, and the label would be lost
+ * on exactly the cells large enough to carry one. The crossover value is the worst case, and the
+ * tests assert what that worst case actually is.
+ */
+const INK_CROSSOVER = 0.19;
 
 /** Label colour for a fill: whichever of the two inks has more contrast against it. */
 function inkFor(fill: string): string {
-  return relativeLuminance(fill) > 0.42 ? INK_ON_LIGHT : INK_ON_DARK;
+  return relativeLuminance(fill) > INK_CROSSOVER ? INK_ON_LIGHT : INK_ON_DARK;
+}
+
+/** WCAG contrast ratio between two colours. Used to keep every label legible on its own cell. */
+export function contrastRatio(a: string, b: string): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/** The label colour this module would put on a given ramp fill. Exported so a test can check it. */
+export function labelInkFor(fill: string): string {
+  return inkFor(fill);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -358,8 +383,26 @@ export function esc(s: string): string {
 
 /** Trim a float for output. Keeps the bytes short and identical run to run. */
 function num(v: number): string {
-  const r = Math.round(v * 100) / 100;
+  const r = snap(v);
   return Object.is(r, -0) ? '0' : String(r);
+}
+
+const snap = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * Emit a rectangle's attributes by snapping its EDGES to the output grid rather than its width
+ * and height.
+ *
+ * Rounding x and w independently lets two neighbours that share an edge in the layout end up
+ * overlapping — or gapping — by a hundredth of a pixel. Invisible, but it means the SVG's own
+ * numbers no longer satisfy the property the layout tests assert, and the next person to check
+ * the picture against the geometry has to work out why. Snapping edges makes shared boundaries
+ * round to the same value, so the tiling survives serialisation exactly.
+ */
+function rectAttrs(x: number, y: number, w: number, h: number): string {
+  const x0 = snap(x);
+  const y0 = snap(y);
+  return `x="${num(x0)}" y="${num(y0)}" width="${num(snap(x + w) - x0)}" height="${num(snap(y + h) - y0)}"`;
 }
 
 const FONT = "ui-sans-serif,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
@@ -465,8 +508,7 @@ export function renderTreemapSvg(cells: TreemapCell[], opts: TreemapOptions = {}
     const tip = `${cell.path} — ${coverageLabel(cell)}${cell.active ? ', changed recently' : ''}`;
 
     fills.push(
-      `<rect class="cell ${cls}" x="${num(r.x)}" y="${num(r.y + headH)}" ` +
-        `width="${num(r.w)}" height="${num(r.h)}"><title>${esc(tip)}</title></rect>`
+      `<rect class="cell ${cls}" ${rectAttrs(r.x, r.y + headH, r.w, r.h)}><title>${esc(tip)}</title></rect>`
     );
 
     if (cell.active) {
@@ -475,8 +517,7 @@ export function renderTreemapSvg(cells: TreemapCell[], opts: TreemapOptions = {}
       const i = 1.5;
       if (r.w > 2 * i + 1 && r.h > 2 * i + 1) {
         borders.push(
-          `<rect class="active" x="${num(r.x + i)}" y="${num(r.y + headH + i)}" ` +
-            `width="${num(r.w - 2 * i)}" height="${num(r.h - 2 * i)}"/>`
+          `<rect class="active" ${rectAttrs(r.x + i, r.y + headH + i, r.w - 2 * i, r.h - 2 * i)}/>`
         );
       }
     }
