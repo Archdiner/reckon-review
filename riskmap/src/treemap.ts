@@ -301,22 +301,44 @@ export function relativeLuminance(color: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** Low coverage (alarming, dark) to high coverage (calm, pale). Luminance ascending. */
+/**
+ * THE BRAND RAMP, and why it runs dark-to-pale rather than red-to-green.
+ *
+ * Reckon's palette is a single blue family: deep navy through the mid teal that carries the
+ * wordmark and the install button, out to a pale ice. That is a sequential scale by nature, which
+ * is exactly the right shape for this quantity — coverage is one ordered thing from "nothing
+ * written down" to "fully explained", not two opposed categories.
+ *
+ * A red-to-green diverging scale would have been wrong twice over: it implies a neutral midpoint
+ * this quantity does not have, and it is the least accessible choice available, since red-green
+ * deficiency is the common one. A monochrome blue ramp stays readable under every form of colour
+ * vision deficiency, because the signal is carried by lightness rather than by hue.
+ *
+ * DIRECTION: dark is unexplained, pale is explained. Dark reads as unlit territory, and it keeps
+ * the heaviest ink on the cells a reader should look at first. The dark-mode ramp inverts
+ * luminance rather than hue, so an unexplained cell still stands out against a dark page instead
+ * of disappearing into it.
+ */
+const BRAND_NAVY = '#0d2f4a';
+const BRAND_TEAL = '#4a90ab';
+const BRAND_ICE = '#eaf3f7';
+
+/** Low coverage (unexplained, deep navy) to high (explained, pale ice). Luminance ascending. */
 export const LIGHT_RAMP: string[] = ramp(
-  ['#5a0f2c', '#8f2333', '#bd4a2c', '#d98a3f', '#e6c283', '#eceae2'],
+  [BRAND_NAVY, '#1b5476', '#2f7897', BRAND_TEAL, '#86bacd', '#c3dde8', BRAND_ICE],
   COVERAGE_STEPS
 );
 
-/** Low coverage (alarming, hot) to high coverage (calm, sunk into the page). Luminance descending. */
+/** Low coverage (unexplained, bright) to high (explained, sunk into the page). Luminance descending. */
 export const DARK_RAMP: string[] = ramp(
-  ['#ffbca4', '#f8916c', '#dd6a49', '#ab5238', '#6f402f', '#2c323b'],
+  ['#bfe0ed', '#93c6d9', BRAND_TEAL, '#3a7691', '#2a5670', '#1a3a4e', '#121a22'],
   COVERAGE_STEPS
 );
 
 /** Near-black ink, for the pale end of a ramp. */
-const INK_ON_LIGHT = '#1a1418';
+const INK_ON_LIGHT = '#0b1f30';
 /** Near-white ink, for the dark end of a ramp. */
-const INK_ON_DARK = '#f7f4f2';
+const INK_ON_DARK = '#f2f8fb';
 
 /**
  * Where to switch between the two inks.

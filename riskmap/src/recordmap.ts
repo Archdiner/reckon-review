@@ -311,9 +311,12 @@ export function renderRecordMapPage(map: RecordMap, svg: string): string {
   const greyed = map.cells.length - coloured.length;
 
   const style = `
-  :root { --bg:#fff; --fg:#16181d; --muted:#5c6270; --line:#e3e6ea; --card:#fafbfc; }
+  /* Reckon's palette: deep navy, the mid teal that carries the wordmark, pale ice. */
+  :root { --bg:#f4fafc; --fg:#0b1f30; --muted:#4a6577; --line:#cfe2ea; --card:#e8f2f6;
+          --accent:#4a90ab; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#14161a; --fg:#e8eaed; --muted:#9aa1ad; --line:#2a2e36; --card:#191c22; }
+    :root { --bg:#0b1f30; --fg:#eaf3f7; --muted:#8fb0c2; --line:#1d3f57; --card:#102b40;
+            --accent:#6fa9c2; }
   }
   * { box-sizing:border-box }
   body { margin:0; padding:2.5rem 1.25rem 4rem; background:var(--bg); color:var(--fg);
@@ -322,8 +325,8 @@ export function renderRecordMapPage(map: RecordMap, svg: string): string {
   h1 { font-size:1.5rem; margin:0 0 .35rem; letter-spacing:-.01em }
   .meta { color:var(--muted); font-size:.85rem; margin:0 0 1.5rem }
   .lede { font-size:1.05rem; max-width:44rem; margin:0 0 1.5rem }
-  .big { font-size:1.6rem; font-weight:700 }
-  .refusal { background:var(--card); border:1px solid var(--line); border-left:3px solid #8a1c1c;
+  .big { font-size:1.6rem; font-weight:700; color:var(--accent) }
+  .refusal { background:var(--card); border:1px solid var(--line); border-left:3px solid var(--accent);
              padding:1rem 1.1rem; border-radius:3px; margin:0 0 1.5rem }
   .chart { overflow-x:auto; margin:0 0 1.25rem }
   footer { margin-top:2.5rem; padding-top:1.25rem; border-top:1px solid var(--line);
