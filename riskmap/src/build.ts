@@ -8,7 +8,7 @@
 
 import type { LlmBackend } from '@reckon/core';
 import { readLog, readHead, readRepoName, readAuthorRoster, readTreePaths } from './gitlog.js';
-import { resolveIdentities, isBot } from './identity.js';
+import { resolveIdentities, isBot, footprints, isSubstantial } from './identity.js';
 import { filterCommits } from './filters.js';
 import { partitionRegions, foldSmallRegions, regionFor } from './regions.js';
 import {
@@ -103,6 +103,18 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
     .map((c) => ({ who: ids.keyFor(c.authorName, c.authorEmail), at: c.at }));
   const inactive = inactiveIdentities(activity, inactivityCutoff);
 
+  // DEPARTED = inactive AND substantial. Inactive alone is dominated by drive-by contributors:
+  // on this corpus ~70% of inactive identities committed exactly once, median span zero days.
+  const prints = footprints(
+    fullHistory.filter((c) => !c.bot).map((c) => ({ name: c.authorName, email: c.authorEmail, at: c.at })),
+    ids.keyFor
+  );
+  const departed = new Set([...inactive].filter((k) => isSubstantial(prints.get(k))));
+  log(
+    `${inactive.size} inactive identities, ${departed.size} of them substantial ` +
+      `(${inactive.size ? Math.round((100 * (inactive.size - departed.size)) / inactive.size) : 0}% filtered as drive-bys)`
+  );
+
   const edits: Edit[] = [];
   for (const c of kept) {
     const who = whoOf(c);
@@ -164,7 +176,7 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
   for (const [region, list] of editsByRegion) {
     regions.push(
       computeRegion(
-        { region, edits: list, commits: commitsByRegion.get(region) ?? [], whoOf: new Map(), lastToucher, extant: extantRegions.has(region) },
+        { region, edits: list, commits: commitsByRegion.get(region) ?? [], whoOf: new Map(), lastToucher, extant: extantRegions.has(region), departed },
         inactive,
         spanMonths,
         t

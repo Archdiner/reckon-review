@@ -22,7 +22,7 @@
 
 import { classifyRecord } from './vendor/triviality.js';
 import { isLowMeaningPath } from './filters.js';
-import type { Commit, Edit, FlagName, Region, Thresholds } from './types.js';
+import type { Commit, Edit, Finding, FlagName, Region, Thresholds } from './types.js';
 
 export const DEFAULT_THRESHOLDS: Thresholds = {
   inactivityMonths: 12,
@@ -112,6 +112,8 @@ export interface RegionInput {
   lastToucher: Map<string, string>;
   /** Whether any file under the region survives in the tree being analysed. */
   extant: boolean;
+  /** Inactive AND substantial identities — departed colleagues, not drive-bys. */
+  departed: Set<string>;
 }
 
 /**
@@ -143,9 +145,18 @@ export function computeRegion(
   }
 
   const contributors = byWho.size;
+  let departedContributors = 0;
+  // ORPHANING COUNTS ONLY DEPARTED CONTRIBUTORS, NOT EVERY INACTIVE ONE. A one-PR author who
+  // never came back is indistinguishable from a departed colleague inside a single directory,
+  // and they dominate: ~70% of inactive identities on this corpus committed exactly once, with
+  // a median active span of zero days. Counting them made open-source orphan rates look like
+  // institutional knowledge loss when they were drive-by traffic.
   const files = new Set(edits.map((e) => e.path));
   let orphanFiles = 0;
-  for (const f of files) if (input.lastToucher.get(f) !== undefined && inactive.has(input.lastToucher.get(f)!)) orphanFiles++;
+  for (const f of files) {
+    const w = input.lastToucher.get(f);
+    if (w !== undefined && input.departed.has(w)) orphanFiles++;
+  }
   let inactiveContributors = 0;
   let orphanedCommits = 0;
   let largest = 0;
@@ -153,6 +164,7 @@ export function computeRegion(
     if (inactive.has(who)) {
       inactiveContributors++;
       orphanedCommits += s.size;
+      if (input.departed.has(who)) departedContributors++;
     }
     if (s.size > largest) largest = s.size;
   }
@@ -183,6 +195,7 @@ export function computeRegion(
     linesChanged,
     contributors,
     inactiveContributors,
+    departedContributors,
     orphanedShare: files.size ? orphanFiles / files.size : 0,
     orphanedCommitShare: nCommits ? orphanedCommits / nCommits : 0,
     concentration: nCommits ? largest / nCommits : 0,
@@ -194,6 +207,7 @@ export function computeRegion(
     recordCoveragePercentile: null,
     recordCommitsScored: 0,
     extant: input.extant,
+    findings: [],
     flags: [],
     flagged: false,
   };
@@ -266,9 +280,14 @@ export function applyFlags(
   // A DELETED REGION CANNOT BE AT RISK. Nothing is left to understand, so there is nobody who
   // needs to explain it. This is not a threshold — it is a precondition, and it is checked
   // before any of them.
-  const ownership = flags.includes('orphaned') || flags.includes('concentrated');
+  // TWO NAMED FINDINGS, NOT ONE RISK LIST. Both require the region to be live and to still
+  // exist; they differ in what they assert, and the page states which conversation the reader
+  // is in rather than letting the two blur.
   const live = flags.includes('hot');
-  return { ...r, flags, flagged: r.extant && live && ownership };
+  const findings: Finding[] = [];
+  if (r.extant && live && flags.includes('orphaned')) findings.push('departed');
+  if (r.extant && live && flags.includes('concentrated')) findings.push('concentrated');
+  return { ...r, flags, findings, flagged: findings.length > 0 };
 }
 
 /**

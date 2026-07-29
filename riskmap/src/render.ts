@@ -64,12 +64,13 @@ export function explain(r: Region, t: RiskMap['thresholds'], cal: Calibration | 
   const bits: string[] = [];
 
   if (r.flags.includes('orphaned')) {
-    const n = r.inactiveContributors;
+    const n = r.departedContributors;
     const of = r.contributors;
     bits.push(
-      `${n} of the ${of} contributor${of === 1 ? '' : 's'} to this directory ${n === 1 ? 'has' : 'have'} not ` +
-        `committed anywhere in the repository in over ${t.inactivityMonths} months, and ${pct(r.orphanedShare)} ` +
-        'of its changes came from them'
+      `${pct(r.orphanedShare)} of the files here were last changed by someone who has not ` +
+        `committed anywhere in this repository in over ${t.inactivityMonths} months — ` +
+        `${n} of its ${of} contributor${of === 1 ? '' : 's'}, counting only people who were ` +
+        'substantially involved rather than one-off contributors'
     );
   }
   if (r.flags.includes('concentrated')) {
@@ -114,7 +115,7 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
           : `<td class="num">${pct(r.recordCoverage)}<span class="sub">p${r.recordCoveragePercentile?.toFixed(0) ?? '?'}</span></td>`;
       return `
       <tr class="${r.flagged ? 'flagged' : 'sub-threshold'}">
-        <td class="region"><code>${esc(r.path)}</code>${r.flagged ? '<span class="mark">flagged</span>' : ''}<div class="chips">${flagChips(r)}</div></td>
+        <td class="region"><code>${esc(r.path)}</code>${r.findings.map((f) => `<span class="mark mark-${f}">${f}</span>`).join('')}<div class="chips">${flagChips(r)}</div></td>
         <td class="num strong">${pct(r.orphanedShare)}<span class="sub">${r.inactiveContributors}/${r.contributors} inactive</span></td>
         <td class="num">${pct(r.concentration)}</td>
         <td class="num">${r.commitsPerMonth.toFixed(1)}<span class="sub">${Math.round(r.linesPerMonth).toLocaleString('en-US')} lines</span></td>
@@ -169,6 +170,7 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
   .mark { display:inline-block; margin-left:.4rem; padding:.05rem .35rem; border-radius:2px;
           background:var(--accent); color:var(--bg); font-size:.66rem; font-weight:700;
           text-transform:uppercase; letter-spacing:.04em }
+  .mark-concentrated { background:var(--muted) }
   tr.sub-threshold td { opacity:.62 }
   tr.why .below { font-style:italic }
   tr.why td { border-top:0; padding-top:0; color:var(--muted); font-size:.86rem }
@@ -184,7 +186,7 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
   footer code { background:var(--chip); padding:.05rem .25rem; border-radius:2px }
 </style>
 <main>
-  <h1>Where this codebase depends on people who have stopped committing</h1>
+  <h1>Two questions about this codebase's ownership</h1>
   <p class="meta">
     <strong>${esc(report.repo)}</strong> · <code>${esc(report.headSha.slice(0, 10))}</code> ·
     ${Math.min(report.windowMonths, Math.round(report.spanMonths))}-month window ending ${fmtDate(report.asOf)} ·
@@ -193,9 +195,14 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
   </p>
 
   <p class="lede">
-    Every figure below comes from this repository's git history and nothing else — no API, no
-    access, no installation. Regions are directories. People appear only as counts: this is a
-    map of code, and nobody is named anywhere in it, by design.
+    Two separate findings, kept separate because they are different problems.
+    <strong>Departed</strong> — the people who wrote this are gone. <strong>Concentrated</strong>
+    — one person does all of this. A region can be either, both, or neither.
+  </p>
+  <p class="lede">
+    Every figure comes from this repository's git history and nothing else — no API, no access,
+    no installation. Regions are directories. People appear only as counts: this is a map of
+    code, and nobody is named anywhere in it, by design.
   </p>
 
   ${
@@ -228,10 +235,13 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
       against the repository independently. Nothing here is summed or multiplied.
     </p>
     <ul>
-      <li><strong>Orphaned</strong> — share of this region's commits made by contributors with
-        no commit <em>anywhere in the repository</em> in the last ${t.inactivityMonths} months.
-        Activity is a repo-wide question: someone who moved to another area has not stopped being
-        available to explain this one.</li>
+      <li><strong>Departed share</strong> — of the files here now, the share whose most recent
+        change came from a departed contributor. Departed means no commit <em>anywhere in the
+        repository</em> in ${t.inactivityMonths} months <em>and</em> a substantial prior footprint:
+        at least ${5} commits spanning at least ${90} days. That second condition matters — on the
+        repositories this was calibrated against, roughly 70% of inactive contributors had made
+        exactly one commit ever, and counting them as departures turns ordinary drive-by traffic
+        into a false alarm.</li>
       <li><strong>Concentration</strong> — share of commits from the single largest contributor.
         High concentration together with a high orphaned share is the bus-factor case.</li>
       <li><strong>Churn</strong> — commits and lines per month over the ${report.spanMonths.toFixed(0)} months of history
@@ -246,9 +256,12 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
 
     <h2>Thresholds</h2>
     <p>
-      A region is <strong>flagged</strong> when it is <strong>still moving</strong> (churn at or
-      above this repository's median region) <strong>and</strong> carries an ownership signal
-      (orphaned or concentrated). Both are required. Churn alone describes a busy region;
+      A region is marked <strong>departed</strong> when it is still moving, still exists in the
+      tree, and ${pct(t.orphanedShare)} or more of its files were last changed by a departed
+      contributor. It is marked <strong>concentrated</strong> when it is still moving, still
+      exists, and ${pct(t.concentration)} or more of its changes came from one person. Liveness
+      and existence are preconditions for both — a deleted directory has nothing left to
+      understand, and dead code is not a risk anyone needs to act on. Churn alone describes a busy region;
       ownership alone describes dead code, which nobody needs to act on. The table below shows
       the top ten regions by rank whether or not they clear the rule, because the gradient is
       more informative than the cut. ${rule.available} of the four dimensions were measurable here.

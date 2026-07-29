@@ -85,6 +85,12 @@ export interface Region {
   contributors: number;
   /** Of those, how many have no commit ANYWHERE in the repo in the inactivity window. */
   inactiveContributors: number;
+  /**
+   * Of the inactive ones, how many were SUBSTANTIAL — embedded enough that their leaving means
+   * something. The rest are drive-bys, and on this corpus they are roughly 70% of all inactive
+   * identities. Only these count toward the orphan signal.
+   */
+  departedContributors: number;
 
   // ---- the dimensions. Displayed as components, never summed into a score. ----
   /**
@@ -135,12 +141,27 @@ export interface Region {
    * collapsed the headline dormancy effect from 20/28-vs-67/253 to 0/8-vs-5/190.
    */
   extant: boolean;
+  /** Which of the two findings this region represents. Empty when it clears neither. */
+  findings: Finding[];
   /** Which threshold tests this region clears. Displayed; never weighted into a number. */
   flags: FlagName[];
   flagged: boolean;
 }
 
 export type FlagName = 'orphaned' | 'concentrated' | 'hot' | 'undocumented';
+
+/**
+ * The two findings this map can make, kept SEPARATE rather than blended into one risk list.
+ *
+ * They are different conversations and they sell differently. Bus factor is chronic, and every
+ * engineering leader can already name theirs — it is a fair finding but it is not news.
+ * Departure is acute, dated, and usually has an incident attached, which is the stronger one.
+ *
+ * Blending them lets the artifact overclaim without anyone noticing: grafana's only flagged
+ * region has an orphan share of ZERO and is flagged purely on concentration, so a page headed
+ * "code nobody left understands" would have been making a claim its own table refutes.
+ */
+export type Finding = 'departed' | 'concentrated';
 
 export interface Thresholds {
   /** Contributor counts as inactive with no commit repo-wide in this many months. */

@@ -101,6 +101,59 @@ class UnionFind {
   }
 }
 
+/**
+ * Repo-wide footprint of one identity, used to tell a departed colleague from a drive-by.
+ *
+ * The two look identical inside a single directory: both show as "contributed here, no longer
+ * active". They separate immediately on TOTAL footprint. Measured on the corpus: 70.5% of
+ * langchain's inactive identities and 68.6% of grafana's made exactly ONE commit ever, with a
+ * median active span of zero days. Counting those as departures is what made open-source orphan
+ * rates look like institutional knowledge loss when they were one-PR traffic.
+ */
+export interface Footprint {
+  commits: number;
+  firstAt: number;
+  lastAt: number;
+  /** Days between first and last commit anywhere in the repository. */
+  spanDays: number;
+}
+
+/**
+ * Whether an identity was ever embedded enough that their leaving means anything.
+ *
+ * BOTH conditions, because either alone admits the wrong people: a commit count alone lets one
+ * busy afternoon qualify, and a span alone lets two commits three years apart qualify. The
+ * thresholds are read off the corpus rather than chosen — at five commits the median active
+ * span jumps from 0 days to 152 on langchain and 463 on grafana, which is where the population
+ * stops being drive-bys.
+ */
+export const SUBSTANTIAL_COMMITS = 5;
+export const SUBSTANTIAL_SPAN_DAYS = 90;
+
+export function isSubstantial(f: Footprint | undefined): boolean {
+  if (!f) return false;
+  return f.commits >= SUBSTANTIAL_COMMITS && f.spanDays >= SUBSTANTIAL_SPAN_DAYS;
+}
+
+export function footprints(
+  roster: { name: string; email: string; at: number }[],
+  keyFor: (name: string, email: string) => string
+): Map<string, Footprint> {
+  const out = new Map<string, Footprint>();
+  for (const r of roster) {
+    const k = keyFor(r.name, r.email);
+    const f = out.get(k);
+    if (!f) out.set(k, { commits: 1, firstAt: r.at, lastAt: r.at, spanDays: 0 });
+    else {
+      f.commits++;
+      if (r.at < f.firstAt) f.firstAt = r.at;
+      if (r.at > f.lastAt) f.lastAt = r.at;
+    }
+  }
+  for (const f of out.values()) f.spanDays = (f.lastAt - f.firstAt) / 86400000;
+  return out;
+}
+
 export interface IdentityResolution {
   /** Maps `${name}\x00${email}` to the opaque key. */
   keyFor: (name: string, email: string) => string;

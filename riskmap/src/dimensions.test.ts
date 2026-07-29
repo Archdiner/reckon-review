@@ -62,7 +62,7 @@ console.log('dimension tests');
     ['src/a.ts', 'gone'], ['src/b.ts', 'gone'], ['src/c.ts', 'gone'], ['src/d.ts', 'here'],
   ]);
   const r = computeRegion(
-    { region: 'src', edits, commits: [], whoOf: new Map(), lastToucher, extant: true },
+    { region: 'src', edits, commits: [], whoOf: new Map(), lastToucher, extant: true, departed: new Set(['gone']) },
     new Set(['gone']),
     24,
     DEFAULT_THRESHOLDS
@@ -87,7 +87,7 @@ console.log('dimension tests');
     ['src/a.ts', 'gone'], ['src/b.ts', 'gone'], ['src/c.ts', 'gone'], ['src/d.ts', 'here'],
   ]);
   const r = computeRegion(
-    { region: 'src', edits, commits: [], whoOf: new Map(), lastToucher, extant: true },
+    { region: 'src', edits, commits: [], whoOf: new Map(), lastToucher, extant: true, departed: new Set(['gone']) },
     new Set(['gone']),
     24,
     DEFAULT_THRESHOLDS
@@ -106,7 +106,7 @@ console.log('dimension tests');
     edit('n2', 'p2'),
     edit('n3', 'p3'),
   ];
-  const r = computeRegion({ region: 'src', edits, commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true }, new Set(), NOW, DEFAULT_THRESHOLDS);
+  const r = computeRegion({ region: 'src', edits, commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true, departed: new Set(['gone']) }, new Set(), NOW, DEFAULT_THRESHOLDS);
   ok('THE WIDE-COMMIT CASE: one commit counts once however many files it touched', Math.abs(r.concentration - 0.25) < 1e-9);
 }
 
@@ -122,7 +122,7 @@ console.log('dimension tests');
     ),
   ];
   const r = computeRegion(
-    { region: 'src', edits: [edit('a', 'w'), edit('b', 'w'), edit('c', 'w')], commits, whoOf: new Map(), lastToucher: new Map(), extant: true },
+    { region: 'src', edits: [edit('a', 'w'), edit('b', 'w'), edit('c', 'w')], commits, whoOf: new Map(), lastToucher: new Map(), extant: true, departed: new Set(['gone']) },
     new Set(),
     NOW,
     DEFAULT_THRESHOLDS
@@ -131,7 +131,7 @@ console.log('dimension tests');
 }
 
 {
-  const base = computeRegion({ region: 'r', edits: [edit('c1', 'gone')], commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true }, new Set(['gone']), NOW, DEFAULT_THRESHOLDS);
+  const base = computeRegion({ region: 'r', edits: [edit('c1', 'gone')], commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true, departed: new Set(['gone']) }, new Set(['gone']), NOW, DEFAULT_THRESHOLDS);
   const hot = { ...base, commitsPerMonth: 10, concentration: 0.9, recordCoveragePercentile: 5 };
   const hot4 = { ...hot, orphanedShare: 0.9 };
   ok('four tests clearing flags the region', applyFlags(hot4, DEFAULT_THRESHOLDS, true, 2).flags.length === 4);
@@ -172,7 +172,7 @@ console.log('dimension tests');
 
 {
   const mk = (cpm: number) => ({
-    ...computeRegion({ region: 'r', edits: [edit('c1', 'w')], commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true }, new Set(), NOW, DEFAULT_THRESHOLDS),
+    ...computeRegion({ region: 'r', edits: [edit('c1', 'w')], commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true, departed: new Set(['gone']) }, new Set(), NOW, DEFAULT_THRESHOLDS),
     commitsPerMonth: cpm,
   });
   ok(
@@ -187,7 +187,7 @@ console.log('dimension tests');
 
 {
   const mk = (p: string, o: number, c: number) => ({
-    ...computeRegion({ region: p, edits: [edit('x', 'w')], commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true }, new Set(), NOW, DEFAULT_THRESHOLDS),
+    ...computeRegion({ region: p, edits: [edit('x', 'w')], commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true, departed: new Set(['gone']) }, new Set(), NOW, DEFAULT_THRESHOLDS),
     orphanedShare: o,
     commitsPerMonth: c,
     flagged: true,
@@ -285,8 +285,8 @@ console.log('\nregression tests for defects found in review');
   // Churn must divide by the observed span, not the configured window. An 18-month repo was
   // having every rate divided by 60.
   const edits = Array.from({ length: 20 }, (_, i) => edit(`c${i}`, 'w'));
-  const short = computeRegion({ region: 'r', edits, commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true }, new Set(), 18, DEFAULT_THRESHOLDS);
-  const long = computeRegion({ region: 'r', edits, commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true }, new Set(), 60, DEFAULT_THRESHOLDS);
+  const short = computeRegion({ region: 'r', edits, commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true, departed: new Set(['gone']) }, new Set(), 18, DEFAULT_THRESHOLDS);
+  const long = computeRegion({ region: 'r', edits, commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true, departed: new Set(['gone']) }, new Set(), 60, DEFAULT_THRESHOLDS);
   ok('THE YOUNG-REPO CASE: churn uses the observed span', Math.abs(short.commitsPerMonth - 20 / 18) < 1e-9);
   ok('a longer span gives a lower rate for the same commits', long.commitsPerMonth < short.commitsPerMonth);
 }
@@ -296,7 +296,7 @@ console.log('\nregression tests for defects found in review');
   // built entirely from commits to files that no longer exist scored the same as a live one,
   // and then — being deleted — received no further commits, which the harness read as a
   // correct prediction of dormancy. Extancy is a precondition, not a threshold.
-  const seed = computeRegion({ region: 'r', edits: [edit('c1', 'gone')], commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true }, new Set(['gone']), 24, DEFAULT_THRESHOLDS);
+  const seed = computeRegion({ region: 'r', edits: [edit('c1', 'gone')], commits: [], whoOf: new Map(), lastToucher: new Map(), extant: true, departed: new Set(['gone']) }, new Set(['gone']), 24, DEFAULT_THRESHOLDS);
   const live = { ...seed, orphanedShare: 0.9, concentration: 0.8, commitsPerMonth: 12, extant: true };
   const deleted = { ...live, extant: false };
   ok('THE DELETED-DIRECTORY CASE: a region with no files left cannot flag', !applyFlags(deleted, DEFAULT_THRESHOLDS, false, 8).flagged);

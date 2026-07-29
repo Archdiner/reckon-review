@@ -2,6 +2,7 @@
  * The command surface.
  *
  *   riskmap map <clone>          build the page. git only unless --coverage is passed.
+ *   riskmap sweep --repos F      run the map across many repositories and report the hit rate.
  *   riskmap validate <clone>     the retrospective test: does a flag predict anything?
  *   riskmap calibrate            rebuild the calibration distribution from the study results.
  *
@@ -18,6 +19,7 @@ import { execSync } from 'node:child_process';
 import { buildMap } from './build.js';
 import { renderHtml } from './render.js';
 import { runValidation, formatValidationReport } from './validate.js';
+import { runSweep, sweepWorker, DiskSpaceError } from './sweep.js';
 import { AnthropicBackend, OpenAiBackend } from './vendor/backends.js';
 import type { LlmBackend } from '@reckon/core';
 import { LeakageError } from './coverage.js';
@@ -137,6 +139,60 @@ async function cmdMap() {
   console.error(`wrote ${json}`);
 }
 
+/**
+ * The sweep: many repositories first, targets chosen afterwards.
+ *
+ *   riskmap sweep --repos repos.txt --clones clones/ --out out/sweep
+ *
+ * The workflow this replaces picked a prospect, cloned it, ran the map and found out afterwards
+ * whether anything surfaced — on the four repositories tested that way, two came back with zero
+ * flagged regions. Inverting the order costs the same clone volume and turns the hit rate into a
+ * number known before the first email rather than discovered halfway through a sending session.
+ */
+async function cmdSweep() {
+  const repos = arg('repos');
+  if (!repos) {
+    throw new Error(
+      'usage: riskmap sweep --repos <file> [--clones DIR] [--out DIR] [--force]\n' +
+        '  the repo file is one git URL or owner/name per line; # starts a comment'
+    );
+  }
+  const summary = await runSweep({
+    reposFile: resolve(repos),
+    clonesDir: resolve(arg('clones', join(ROOT, 'clones'))!),
+    outDir: resolve(arg('out', join(ROOT, 'out', 'sweep'))!),
+    force: flag('force'),
+    ...(arg('clone-timeout') ? { cloneTimeoutMs: Number(arg('clone-timeout')) * 1000 } : {}),
+    ...(arg('build-timeout') ? { buildTimeoutMs: Number(arg('build-timeout')) * 1000 } : {}),
+    onProgress: (m) => console.error(m),
+  });
+
+  const outDir = resolve(arg('out', join(ROOT, 'out', 'sweep'))!);
+  console.error('');
+  if (summary.hitRate.percent === null) {
+    console.error(`no hit rate: ${summary.hitRate.note}`);
+  } else {
+    console.error(
+      `hit rate ${summary.hitRate.fraction} = ${summary.hitRate.percent.toFixed(1)}% of completed ` +
+        `repositories flagged at least one region (${summary.totals.errored} errored, excluded)`
+    );
+  }
+  console.error(`wrote ${join(outDir, 'summary.md')}`);
+  console.error(`wrote ${join(outDir, 'summary.json')}`);
+}
+
+/**
+ * Internal. One repository, in its own process, so a hang can be killed and a large heap is
+ * reclaimed between repositories. Not a user-facing command; `sweep` spawns it.
+ */
+async function cmdSweepBuild() {
+  const repo = positional(0);
+  const out = positional(1);
+  const spec = positional(2) ?? repo ?? '';
+  if (!repo || !out) throw new Error('internal: sweep-build <repo> <out.json> [spec]');
+  await sweepWorker(resolve(repo), resolve(out), spec);
+}
+
 async function cmdValidate() {
   // Flag VALUES are not repositories. `--months-back 18` would otherwise contribute "18" as a
   // clone path, and the failure surfaces as `spawn git ENOENT` two minutes into a run.
@@ -236,13 +292,15 @@ function cmdCalibrate() {
 
 const COMMANDS: Record<string, () => void | Promise<void>> = {
   map: cmdMap,
+  sweep: cmdSweep,
+  'sweep-build': cmdSweepBuild,
   validate: cmdValidate,
   calibrate: cmdCalibrate,
 };
 
 const run = cmd ? COMMANDS[cmd] : undefined;
 if (!run) {
-  console.error('commands: map <clone> | validate <clone>... | calibrate');
+  console.error('commands: map <clone> | sweep --repos <file> | validate <clone>... | calibrate');
   process.exit(1);
 }
 
@@ -254,6 +312,12 @@ try {
     // from clean ones, which is worse than no numbers.
     console.error(`\nABORTED — information separation violated:\n${e.message}`);
     process.exit(2);
+  }
+  if (e instanceof DiskSpaceError) {
+    // Not a per-repository failure. Everything already completed is persisted, so the fix is to
+    // free space and re-run; the sweep resumes rather than restarting.
+    console.error(`\nSWEEP ABORTED — not enough disk:\n${e.message}`);
+    process.exit(3);
   }
   console.error(`\n${e instanceof Error ? e.message : String(e)}`);
   process.exit(1);
