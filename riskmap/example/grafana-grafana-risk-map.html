@@ -1,0 +1,192 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Git-history risk map — grafana/grafana</title>
+<style>
+  :root {
+    --bg:#fff; --fg:#16181d; --muted:#5c6270; --line:#e3e6ea; --accent:#8a1c1c;
+    --chip:#f1f3f5; --card:#fafbfc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14161a; --fg:#e8eaed; --muted:#9aa1ad; --line:#2a2e36; --accent:#ff9d9d;
+            --chip:#232830; --card:#191c22; }
+  }
+  * { box-sizing:border-box }
+  body { margin:0; padding:2.5rem 1.25rem 4rem; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  main { max-width:60rem; margin:0 auto }
+  h1 { font-size:1.55rem; margin:0 0 .35rem; letter-spacing:-.01em }
+  .meta { color:var(--muted); font-size:.85rem; margin:0 0 1.75rem }
+  .meta code { font-size:.85em }
+  .lede { font-size:1.02rem; margin:0 0 1.5rem; max-width:46rem }
+  .notice { background:var(--card); border:1px solid var(--line); border-left:3px solid var(--accent);
+            padding:.85rem 1rem; margin:0 0 1.75rem; font-size:.9rem; border-radius:3px }
+  .scroll { overflow-x:auto; -webkit-overflow-scrolling:touch }
+  table { border-collapse:collapse; width:100%; min-width:44rem; font-size:.9rem }
+  th { text-align:right; font-weight:600; color:var(--muted); font-size:.72rem;
+       text-transform:uppercase; letter-spacing:.04em; padding:0 .6rem .5rem; white-space:nowrap }
+  th:first-child { text-align:left }
+  td { padding:.7rem .6rem; border-top:1px solid var(--line); vertical-align:top }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap }
+  td.strong { font-weight:600 }
+  td.na { color:var(--muted) }
+  .sub { display:block; color:var(--muted); font-size:.72rem; font-weight:400 }
+  .region code { font-size:.88em; word-break:break-all }
+  .chips { margin-top:.3rem }
+  .chip { display:inline-block; background:var(--chip); color:var(--muted); border-radius:2px;
+          padding:.05rem .35rem; font-size:.68rem; margin-right:.2rem; white-space:nowrap }
+  tr.why td { border-top:0; padding-top:0; color:var(--muted); font-size:.86rem }
+  tr.why p { margin:.15rem 0 }
+  tr.why .action { color:var(--fg); font-weight:600 }
+  td.none { color:var(--muted); padding:1.25rem .6rem }
+  footer { margin-top:3rem; padding-top:1.25rem; border-top:1px solid var(--line);
+           color:var(--muted); font-size:.82rem }
+  footer h2 { font-size:.78rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
+              margin:1.5rem 0 .5rem }
+  footer ul { margin:.4rem 0; padding-left:1.1rem }
+  footer li { margin:.25rem 0 }
+  footer code { background:var(--chip); padding:.05rem .25rem; border-radius:2px }
+</style>
+<main>
+  <h1>Where this codebase depends on people who have stopped committing</h1>
+  <p class="meta">
+    <strong>grafana/grafana</strong> · <code>3c66fe6f38</code> ·
+    60-month window ending 2026-07-29 ·
+    37,266 commits · 68 regions ·
+    generated 2026-07-29
+  </p>
+
+  <p class="lede">
+    Every figure below comes from this repository's git history and nothing else — no API, no
+    access, no installation. Regions are directories. People appear only as counts: this is a
+    map of code, and nobody is named anywhere in it, by design.
+  </p>
+
+  
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Region</th>
+        <th>Orphaned</th>
+        <th>Concentration</th>
+        <th>Churn / month</th>
+        <th>Record coverage</th>
+        <th>Last explanation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="region"><code>pkg/framework</code><div class="chips"><span class="chip chip-orphaned">orphaned</span> <span class="chip chip-concentrated">concentrated</span></div></td>
+        <td class="num strong">85%<span class="sub">2/4 inactive</span></td>
+        <td class="num">80%</td>
+        <td class="num">0.3<span class="sub">40 lines</span></td>
+        <td class="num na" title="not scored">—</td>
+        <td class="num">2023-01-18</td>
+      </tr>
+      <tr class="why"><td colspan="6"><p>2 of the 4 contributors to this directory have not committed anywhere in the repository in over 12 months, and 85% of its changes came from them; 80% of its changes came from a single contributor. Nothing substantive has been written here since January 2023.</p><p class="action">This region needs a written explanation from someone who still works here.</p></td></tr>
+      <tr>
+        <td class="region"><code>pkg/coremodel</code><div class="chips"><span class="chip chip-orphaned">orphaned</span> <span class="chip chip-concentrated">concentrated</span></div></td>
+        <td class="num strong">67%<span class="sub">2/10 inactive</span></td>
+        <td class="num">63%</td>
+        <td class="num">0.5<span class="sub">91 lines</span></td>
+        <td class="num na" title="not scored">—</td>
+        <td class="num">2022-11-15</td>
+      </tr>
+      <tr class="why"><td colspan="6"><p>2 of the 10 contributors to this directory have not committed anywhere in the repository in over 12 months, and 67% of its changes came from them; 63% of its changes came from a single contributor. Nothing substantive has been written here since November 2022.</p><p class="action">This region needs a written explanation from someone who still works here.</p></td></tr></tbody>
+  </table>
+  </div>
+
+  <footer>
+    <h2>How to read this</h2>
+    <p>
+      Five dimensions are shown rather than one risk score. A single number would invite an
+      argument about weights and hide the reason a region surfaced; these can each be checked
+      against the repository independently. Nothing here is summed or multiplied.
+    </p>
+    <ul>
+      <li><strong>Orphaned</strong> — share of this region's commits made by contributors with
+        no commit <em>anywhere in the repository</em> in the last 12 months.
+        Activity is a repo-wide question: someone who moved to another area has not stopped being
+        available to explain this one.</li>
+      <li><strong>Concentration</strong> — share of commits from the single largest contributor.
+        High concentration together with a high orphaned share is the bus-factor case.</li>
+      <li><strong>Churn</strong> — commits and lines per month over the window. A region nobody
+        touches is lower risk than a hot one with the same ownership profile.</li>
+      <li><strong>Record coverage</strong> — share of mechanism questions about a change that
+        the commit records actually answer, generated and scored by the same instrument used on the
+        calibration corpus. <code>p</code> is the position in that corpus.</li>
+      <li><strong>Last explanation</strong> — the most recent commit here whose message says
+        anything beyond its own subject line.</li>
+    </ul>
+
+    <h2>Thresholds</h2>
+    <p>
+      A region is listed when it clears at least <strong>3</strong> of these tests.
+      They are printed because a reader who disagrees with them should be able to see exactly what
+      they were.
+    </p>
+    <ul>
+      <li>orphaned share ≥ 50%</li>
+      <li>concentration ≥ 50%</li>
+      <li>churn ≥ 3.8 commits / month</li>
+      <li>record coverage at or below the 30th percentile of the calibration corpus</li>
+    </ul>
+    <p>
+      Regions are directories at depth 3, chosen to give between 20 and 60 regions for this repository; directories with fewer than
+      15 commits are folded into their parent. Directory rather than file
+      because renames make file-level history unreliable, and because four hundred cells is a
+      screenshot rather than a decision.
+    </p>
+
+    <h2>Exclusions</h2>
+    <ul>
+      <li>Generated, vendored and lockfile paths are removed
+        (9,081 file touches).</li>
+      <li>Bot authors — dependabot, renovate, release and CI accounts — are excluded entirely
+        (3,569 commits). Left in, they dominate churn.</li>
+      <li>Commits touching more than 300 files are excluded from churn and
+        authorship (27 commits). An initial
+        import or vendor drop would otherwise make its author look like the owner of everything.</li>
+      <li>Migration, fixture, snapshot and locale directories are marked as low-meaning: high churn,
+        little mechanism.</li>
+      <li>Contributor identities are merged across addresses before anything is counted
+        (1563 author records → 1370 identities),
+        because one person committing under three addresses would otherwise invent a bus factor
+        that does not exist.</li>
+    </ul>
+
+    <h2>The departure proxy</h2>
+    <p>
+      <strong>No commits in 12 months is an inference, not a fact.</strong> People
+      go on leave, change teams, move to another repository, or commit under an identity this tool
+      failed to merge. That is why every figure is aggregated to a region, why the wording is
+      inactivity rather than departure, and why no individual is named. Treat a flagged region as a
+      question worth asking, not as a personnel finding.
+    </p>
+
+    <h2>Calibration</h2>
+    <p>
+      Record coverage is reported as a position against 1,000 merged pull
+      requests from grafana/grafana, apache/airflow, supabase/supabase, langchain-ai/langchain and prisma/prisma, scored with the
+      same question generator and rubric.
+    </p>
+    <p>
+      <strong>55.7% of that corpus scores exactly zero</strong>, so the
+      bottom five deciles are all zero and a "bottom decile" claim would be fiction. Percentiles here
+      are midranks, and a value inside the zero mass is reported as tied rather than ranked.
+    </p>
+    <p>
+      Regions of different sizes are compared without normalising, because coverage was measured to be
+      flat across a tenfold range of change size — under 3 points of movement, against 25-26 points for
+      a measure that does respond to size.
+    </p>
+    <p>
+      One mismatch worth knowing: the corpus scores pull-request records (description plus commit
+      messages); this tool scores commit messages only, because a clone is its whole dependency and
+      descriptions are not in it. A commit-only record is a subset, so these percentiles are biased
+      <em>low</em>. A region that looks fine is fine; a region that looks bad may partly be the missing
+      channel.
+    </p>
+  </footer>
+</main>

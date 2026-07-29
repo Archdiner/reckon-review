@@ -1,0 +1,20 @@
+{
+  "name": "reckon-riskmap",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The git-history risk map: which parts of a codebase are at risk because the people who understood them are gone, thin on the ground, or never wrote anything down. Generated from a clone alone.",
+  "scripts": {
+    "riskmap": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/identity.test.ts && tsx src/regions.test.ts && tsx src/gitlog.test.ts && tsx src/dimensions.test.ts && tsx src/vendor.test.ts"
+  },
+  "dependencies": {
+    "@reckon/core": "file:vendor/reckon-core-0.5.0.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

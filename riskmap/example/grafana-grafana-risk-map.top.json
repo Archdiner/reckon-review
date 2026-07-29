@@ -1,0 +1,167 @@
+{
+ "report": {
+  "repo": "grafana/grafana",
+  "headSha": "3c66fe6f38ed4beda1cbb528c9766e0108067442",
+  "asOf": 1785339704000,
+  "windowMonths": 60,
+  "commitsSeen": 41120,
+  "commitsKept": 37266,
+  "dropped": {
+   "bot-author": 3569,
+   "oversized-commit": 27,
+   "no-surviving-files": 258,
+   "outside-window": 0
+  },
+  "pathsExcluded": {
+   "generated": 9081
+  },
+  "identitiesBeforeMerge": 1563,
+  "identitiesAfterMerge": 1370,
+  "regionDepth": 3,
+  "regionDepthFallback": false,
+  "regionDepthCandidates": [
+   {
+    "depth": 0,
+    "regions": 33
+   },
+   {
+    "depth": 1,
+    "regions": 40
+   },
+   {
+    "depth": 2,
+    "regions": 74
+   },
+   {
+    "depth": 3,
+    "regions": 80
+   }
+  ]
+ },
+ "thresholds": {
+  "inactivityMonths": 12,
+  "windowMonths": 60,
+  "orphanedShare": 0.5,
+  "concentration": 0.5,
+  "commitsPerMonth": 3.8,
+  "coveragePercentile": 30,
+  "minFlags": 3,
+  "regionMinCommits": 15,
+  "maxFilesPerCommit": 300
+ },
+ "squash": {
+  "availability": "available",
+  "substantiveBodyShare": 0.465,
+  "sampled": 200,
+  "note": "46.5% of the last 200 commits carry a body beyond their subject, so descriptions survive into git here and the record dimension is measuring authors rather than merge settings."
+ },
+ "regions": [
+  {
+   "path": "pkg/framework",
+   "commits": 20,
+   "edits": 50,
+   "linesChanged": 2424,
+   "contributors": 4,
+   "inactiveContributors": 2,
+   "orphanedShare": 0.85,
+   "concentration": 0.8,
+   "commitsPerMonth": 0.3333333333333333,
+   "linesPerMonth": 40.4,
+   "agentDensity": 0,
+   "lastSubstantiveExplanation": 1674063622000,
+   "recordCoverage": null,
+   "recordCoveragePercentile": null,
+   "recordCommitsScored": 0,
+   "flags": [
+    "orphaned",
+    "concentrated"
+   ],
+   "flagged": true
+  },
+  {
+   "path": "pkg/coremodel",
+   "commits": 30,
+   "edits": 60,
+   "linesChanged": 5479,
+   "contributors": 10,
+   "inactiveContributors": 2,
+   "orphanedShare": 0.6666666666666666,
+   "concentration": 0.6333333333333333,
+   "commitsPerMonth": 0.5,
+   "linesPerMonth": 91.31666666666666,
+   "agentDensity": 0,
+   "lastSubstantiveExplanation": 1668502300000,
+   "recordCoverage": null,
+   "recordCoveragePercentile": null,
+   "recordCommitsScored": 0,
+   "flags": [
+    "orphaned",
+    "concentrated"
+   ],
+   "flagged": true
+  }
+ ],
+ "top": [
+  {
+   "path": "pkg/framework",
+   "commits": 20,
+   "edits": 50,
+   "linesChanged": 2424,
+   "contributors": 4,
+   "inactiveContributors": 2,
+   "orphanedShare": 0.85,
+   "concentration": 0.8,
+   "commitsPerMonth": 0.3333333333333333,
+   "linesPerMonth": 40.4,
+   "agentDensity": 0,
+   "lastSubstantiveExplanation": 1674063622000,
+   "recordCoverage": null,
+   "recordCoveragePercentile": null,
+   "recordCommitsScored": 0,
+   "flags": [
+    "orphaned",
+    "concentrated"
+   ],
+   "flagged": true
+  },
+  {
+   "path": "pkg/coremodel",
+   "commits": 30,
+   "edits": 60,
+   "linesChanged": 5479,
+   "contributors": 10,
+   "inactiveContributors": 2,
+   "orphanedShare": 0.6666666666666666,
+   "concentration": 0.6333333333333333,
+   "commitsPerMonth": 0.5,
+   "linesPerMonth": 91.31666666666666,
+   "agentDensity": 0,
+   "lastSubstantiveExplanation": 1668502300000,
+   "recordCoverage": null,
+   "recordCoveragePercentile": null,
+   "recordCommitsScored": 0,
+   "flags": [
+    "orphaned",
+    "concentrated"
+   ],
+   "flagged": true
+  }
+ ],
+ "calibration": {
+  "corpus": "1,000 merged pull requests from grafana/grafana, apache/airflow, supabase/supabase, langchain-ai/langchain and prisma/prisma",
+  "n": 1000,
+  "deciles": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0.333333,
+   0.333333,
+   0.666667,
+   0.75
+  ],
+  "source": "study/results/per-pr-scores.csv @ dea2f9383c0798ed7f701994ba3b39ad9d1c55a3, column realPctExplicit"
+ },
+ "generatedAtUtc": "2026-07-29T16:26:02.035Z"
+}

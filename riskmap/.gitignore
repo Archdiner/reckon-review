@@ -1,0 +1,15 @@
+# Clones of analysed repositories. The input is a clone and nothing else, so these are
+# reproducible by definition and never versioned.
+clones/
+
+# Generated maps and their intermediates. `out/` holds the HTML that gets sent to a human
+# plus the JSON it was rendered from; both are derived from a clone at a named SHA, which
+# the output records, so regenerating is a one-liner.
+out/
+!example/
+
+node_modules/
+
+# The example artifact IS committed: it is a real run, and a reader should be able to see the
+# output without cloning a 1GB repository first.
+!example/
