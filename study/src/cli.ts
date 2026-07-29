@@ -28,6 +28,7 @@ import { generateSynthetic } from './stage3_synthetic.js';
 import { generateParaphrase } from './stage3b_paraphrase.js';
 import { scoreCorpus, type ScoreMode } from './stage4_score.js';
 import { scoreThreeArms } from './stage4b_score3.js';
+import { loadThreeArm, formatThreeArmReport, writeThreeArmCsv } from './analyze3.js';
 import { analyze, writeCsvs, formatReport } from './stage6_analyze.js';
 import { exportWorksheet, compareLabels } from './handlabel.js';
 import { describeCorpus } from './describe.js';
@@ -138,6 +139,24 @@ async function cmdScore() {
   const rep = await scoreCorpus(PRS, backend, label, CONCURRENCY, mode, 'score-v1', flag('force'));
   console.log(`  written ${rep.written}, skipped ${rep.skipped}, PRs failed ${rep.failed.length}, questions failed ${rep.failedQuestions}`);
   if (mock) console.log('  NOTE: mock backend — scores are hash values, not judgements.');
+}
+
+/**
+ * Stage 6b — the three-arm comparison, and the cut that decides whether the two-arm headline
+ * is about content or about form.
+ */
+function cmdAnalyze3() {
+  mkdirSync(OUT, { recursive: true });
+  const rows = loadThreeArm(PRS);
+  if (rows.length === 0) {
+    console.log('No three-arm scores found. Run paraphrase and score3 first.');
+    return;
+  }
+  const report = formatThreeArmReport(rows);
+  writeFileSync(join(OUT, 'three-arm-report.md'), `${report}\n`);
+  writeFileSync(join(OUT, 'three-arm-scores.csv'), writeThreeArmCsv(rows));
+  console.log(report);
+  console.log(`\nWrote ${join(OUT, 'three-arm-report.md')}, three-arm-scores.csv`);
 }
 
 function cmdAnalyze() {
@@ -278,6 +297,7 @@ const COMMANDS: Record<string, () => void | Promise<void>> = {
   paraphrase: cmdParaphrase,
   score: cmdScore,
   score3: cmdScore3,
+  analyze3: cmdAnalyze3,
   analyze: cmdAnalyze,
   'handlabel-export': cmdHandlabelExport,
   'handlabel-compare': cmdHandlabelCompare,
@@ -297,6 +317,7 @@ async function main() {
     console.log('  score                     stage 4: blinded scoring (--score-mode paired|independent, --force)');
     console.log('  score3                    stage 4b: real/synthetic/paraphrase scored independently (--force)');
     console.log('  analyze                   stage 6: stats, CSVs and report');
+    console.log('  analyze3                  stage 6b: three-arm report — is the gap content or form?');
     console.log('  handlabel-export          export the 50-PR validation worksheet (--n N)');
     console.log('  handlabel-compare         agreement between hand labels and the model');
     console.log('  publish                   copy publishable artifacts into results/ (refuses on mock runs)');
