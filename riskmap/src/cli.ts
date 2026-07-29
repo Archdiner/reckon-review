@@ -24,6 +24,7 @@ import { runValidation, formatValidationReport } from './validate.js';
 import { runRegression, formatRegressionReport } from './regress.js';
 import { buildRecordMap, renderRecordMapPage, DEFAULT_PER_REGION } from './recordmap.js';
 import { renderTreemapSvg, type TreemapCell } from './treemap.js';
+import { renderRecordChart, type ChartRow } from './rankchart.js';
 import { runSweep, sweepWorker, DiskSpaceError } from './sweep.js';
 import { runGate, formatGateReport } from './gate.js';
 import { AnthropicBackend, OpenAiBackend } from './vendor/backends.js';
@@ -380,11 +381,22 @@ async function cmdRecordMap() {
   const fromJson = arg('from-json');
   if (fromJson) {
     const saved = JSON.parse(readFileSync(resolve(fromJson), 'utf8')) as Awaited<ReturnType<typeof buildRecordMap>>;
-    const cells: TreemapCell[] = saved.cells.map((c) => ({
-      path: c.path, weight: c.weight, coverage: c.coverage, ciLo: c.ciLo, ciHi: c.ciHi,
-      scoredCommits: c.scoredCommits, ciHalfWidth: c.ciHalfWidth, active: c.active,
+    const rows: ChartRow[] = saved.cells.map((c) => ({
+      path: c.path, coverage: c.coverage, ciLo: c.ciLo, ciHi: c.ciHi, weight: c.weight,
+      questions: c.questions, scoredCommits: c.scoredCommits, active: c.active,
+      thin: c.greyReason !== null,
     }));
-    const svgOnly = saved.refused ? '' : renderTreemapSvg(cells, { width: 960, height: 560 });
+    const svgOnly = saved.refused
+      ? ''
+      : flag('treemap')
+        ? renderTreemapSvg(
+            saved.cells.map((c) => ({
+              path: c.path, weight: c.weight, coverage: c.coverage, ciLo: c.ciLo, ciHi: c.ciHi,
+              scoredCommits: c.scoredCommits, ciHalfWidth: c.ciHalfWidth, active: c.active,
+            })) as TreemapCell[],
+            { width: 960, height: 560 }
+          )
+        : renderRecordChart(rows, { width: 920, topN: Number(arg('rows', '18')) });
     const dir = resolve(arg('out', join(ROOT, 'out', 'recordmap'))!);
     mkdirSync(dir, { recursive: true });
     const sl = saved.repo.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
@@ -415,11 +427,24 @@ async function cmdRecordMap() {
     onProgress: (m) => console.error(`  ${m}`),
   });
 
-  const cells: TreemapCell[] = map.cells.map((c) => ({
-    path: c.path, weight: c.weight, coverage: c.coverage, ciLo: c.ciLo, ciHi: c.ciHi,
-    scoredCommits: c.scoredCommits, ciHalfWidth: c.ciHalfWidth, active: c.active,
+  // The ranked chart is the artifact; the treemap is kept behind a flag because it was measured
+  // to be unreadable on a skewed size distribution — see rankchart.ts for the numbers.
+  const chartRows: ChartRow[] = map.cells.map((c) => ({
+    path: c.path, coverage: c.coverage, ciLo: c.ciLo, ciHi: c.ciHi, weight: c.weight,
+    questions: c.questions, scoredCommits: c.scoredCommits, active: c.active,
+    thin: c.greyReason !== null,
   }));
-  const svg = map.refused ? '' : renderTreemapSvg(cells, { width: 960, height: 560 });
+  const svg = map.refused
+    ? ''
+    : flag('treemap')
+      ? renderTreemapSvg(
+          map.cells.map((c) => ({
+            path: c.path, weight: c.weight, coverage: c.coverage, ciLo: c.ciLo, ciHi: c.ciHi,
+            scoredCommits: c.scoredCommits, ciHalfWidth: c.ciHalfWidth, active: c.active,
+          })) as TreemapCell[],
+          { width: 960, height: 560 }
+        )
+      : renderRecordChart(chartRows, { width: 920, topN: Number(arg('rows', '18')) });
 
   const outDir = resolve(arg('out', join(ROOT, 'out', 'recordmap'))!);
   mkdirSync(outDir, { recursive: true });
