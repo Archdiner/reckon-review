@@ -54,6 +54,31 @@ Neither claim rests on the other. The result survives whichever arm a critic att
 **The best-documented cut is still not good.** Even on agent-attested PRs, 30.5% of mechanism
 questions get nothing from the record. This is not a story about lazy humans.
 
+### 3. The record does not cover more when the change is bigger
+
+The share of mechanism questions a record answers is **flat across a tenfold range of change
+size** — under 3 points of movement in either arm — while the synthetic arm moves 25-26 points
+over the same range:
+
+| arm | 20-49 | 50-149 | 150-499 | 500+ | range |
+| --- | --- | --- | --- | --- | --- |
+| agent — real record | 52.6 | 50.3 | 53.1 | 50.5 | **2.8** |
+| human — real record | 10.6 | 12.5 | 13.3 | 13.4 | **2.7** |
+| agent — synthetic | 63.2 | 65.1 | 61.1 | 38.7 | 26.4 |
+| human — synthetic | 60.3 | 54.7 | 57.3 | 34.8 | 25.5 |
+
+It is not that people write no more for larger changes — they write substantially more (agent
+median record 656 → 3,279 chars across the range; human 122 → 291). The record *grows* with the
+change while its *coverage* of the change stays put, because a bigger change has proportionally
+more mechanism to explain.
+
+> **Provenance predicts record coverage by ~37 points at every change size. Change size predicts
+> almost nothing.**
+
+Stakes vary; attention does not. That is the empirical case for scaling review effort by blast
+radius rather than trusting that people write more when it matters more — measured on a thousand
+merged PRs instead of assumed. See the caveat on causation below before leaning on it.
+
 ### The selection story is the explanation, not a nuisance
 
 93% of the agent arm is a `Co-authored-by` trailer, which marks a PR from a team that uses
@@ -136,28 +161,68 @@ excluded — -0.52 all, -0.27 substantive-only — and survives at every level.
 
 ## What the result does not cover
 
-### Above ~3,000 characters of record, the finding reverses
+### Long records beat the model, and the curves cross around 1,200 characters
 
-126 PRs (12.6%) have records long enough that the real record **beats** the synthetic:
+Reported continuously rather than at a threshold. Deciles of record length, with median change
+size shown so the entanglement stays visible:
 
-| cut | n | real | synthetic | gap |
+| decile | record chars | real | synthetic | gap | median diff lines |
+| --- | --- | --- | --- | --- | --- |
+| 6 | 536–808 | 39.7 | 61.6 | -21.9 | 120 |
+| 7 | 814–1,206 | 44.7 | 59.6 | -14.9 | 184 |
+| 8 | 1,218–2,037 | 58.2 | 56.3 | **+1.9** | 208 |
+| 9 | 2,043–3,619 | 58.6 | 53.7 | +4.9 | 284 |
+| 10 | 3,693–56,283 | 70.6 | 40.4 | **+30.2** | 1,411 |
+
+The curves cross at roughly **1,200 characters** of record. An earlier version of this README
+put the boundary at 3,000, which was a cutpoint chosen after seeing the data and had no defence
+against "why 3,000?".
+
+**The length effect is not diff size in disguise.** Splitting at the median record length
+*within* each diff-size bucket, the long half beats the short half by +44.6, +32.1, +39.4 and
++50.6 points at 20-49, 50-149, 150-499 and 500+ changed lines. It survives conditioning at every
+change size.
+
+**But the inversion itself is an interaction and needs both factors:**
+
+| | n | real | synthetic | gap |
 | --- | --- | --- | --- | --- |
-| records >3,000 chars | 126 | 1.51 | 1.19 | **+0.32** |
-| records >5,000 chars | 70 | 1.60 | 1.10 | **+0.49** |
+| long record + large diff | 92 | 69.1 | 34.7 | **+34.4** |
+| long record + small diff | 34 | 73.4 | 68.8 | +4.6 |
+| short record + large diff | 167 | 18.0 | 38.7 | -20.7 |
+| short record + small diff | 707 | 28.3 | 59.4 | -31.1 |
 
-Two forces combine: real improves with length, and the synthetic *degrades* on large changes
-(71.9% explicit at 20-49 changed lines against 37.1% at 500+) because a bigger diff means more
-mechanism to cover from a fixed digest budget.
+Long-record and large-diff PRs overlap substantially but are not the same set (31.4% Jaccard;
+73% of long-record PRs are also large-diff). A long record on a small change is roughly a tie; a
+large change with a short record stays firmly negative. So this is one interaction, not two
+independent routes to the same conclusion.
 
-So reproducibility holds for typical records and **breaks for the top ~13%**. Where a human
-wrote at length, they wrote something the model could not recover from the artifact. That is
-the honest boundary of the claim, and it points at where human understanding actually shows up.
+**Reproducibility reverses on large agent-attested changes** — real 50.5 against synthetic 38.7
+at 500+ lines. Not merely weakening: reversing. That is the honest boundary of the claim. The
+human arm never reverses, because its records stay near-empty at every size.
 
-An earlier version of this README attributed the inversion to records whose prose already
-appears in the diff — docs and changelog PRs where copying wins. That is wrong. Only 29 PRs
-have any prose overlap with their diff, only 52% of those touch a markdown file, and the same
-inversion appears at +0.28 among 104 long-record PRs with **zero** overlap. The shingle flag
-was a proxy for verbosity.
+An earlier version also attributed the inversion to records whose prose already appears in the
+diff — docs PRs where copying wins. That is wrong and is retracted. Only 29 PRs share any prose
+with their diff, only 52% of those touch a markdown file, and the same inversion appears among
+long-record PRs with **zero** overlap. The shingle flag was a proxy for verbosity.
+
+### Selection, not causation — including for the product this ships next to
+
+Everything about record length here is correlational.
+
+People who write 5,000-character records are writing about changes that warranted the effort, in
+teams whose culture rewards it, on work they understood well enough to explain. None of that is
+established by this data, and none of it supports the claim that *compelling* length would
+produce information. A mandated 3,000-character minimum would most likely produce 3,000
+characters.
+
+This matters for anyone tempted to cite this study in favour of a tool that asks for more
+explanation, including Reckon. The causal version of this correlation is a bet. It is a
+reasonable bet, and it is not a result.
+
+The flatness finding above is on firmer ground, because it is a statement about what does *not*
+vary rather than about what more writing would buy: coverage is invariant to change size, so
+review effort cannot rely on authors self-scaling with stakes.
 
 ### Both terms of the agent/human contrast move
 

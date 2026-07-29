@@ -32,6 +32,7 @@ import { loadThreeArm, formatThreeArmReport, writeThreeArmCsv } from './analyze3
 import { decomposeBySize } from './decompose_size.js';
 import { exportQuestionWorksheet, scoreAgainstHumanQuestions } from './humanquestions.js';
 import { buildChart } from './chart.js';
+import { formatLengthSizeReport } from './lengthsize.js';
 import { analyze, writeCsvs, formatReport } from './stage6_analyze.js';
 import { exportWorksheet, compareLabels } from './handlabel.js';
 import { describeCorpus } from './describe.js';
@@ -214,6 +215,14 @@ async function cmdScoreHumanQuestions() {
   console.log(text);
 }
 
+/** Record length vs change size: what each one predicts, and what neither establishes. */
+function cmdLength() {
+  mkdirSync(OUT, { recursive: true });
+  const text = formatLengthSizeReport(PRS);
+  writeFileSync(join(OUT, 'length-vs-size.md'), `${text}\n`);
+  console.log(text);
+}
+
 /** The chart: four bars, three segments, the whole result in one picture. */
 function cmdChart() {
   mkdirSync(OUT, { recursive: true });
@@ -343,7 +352,7 @@ async function cmdPublish() {
   const artifacts = [
     'collect-report.json', 'corpus-summary.md', 'report.md', 'analysis.json',
     'per-pr-scores.csv', 'per-question-scores.csv', 'human-validation.md',
-    'three-arm-report.md', 'three-arm-scores.csv', 'size-decomposition.md',
+    'three-arm-report.md', 'three-arm-scores.csv', 'size-decomposition.md', 'length-vs-size.md',
     'record-vs-synthetic.svg', 'human-questions-result.md',
   ];
   const copied: string[] = [];
@@ -398,6 +407,7 @@ const COMMANDS: Record<string, () => void | Promise<void>> = {
   analyze3: cmdAnalyze3,
   decompose: cmdDecompose,
   chart: cmdChart,
+  length: cmdLength,
   'export-questions': cmdExportQuestions,
   'score-human-questions': cmdScoreHumanQuestions,
   analyze: cmdAnalyze,
@@ -421,6 +431,7 @@ async function main() {
     console.log('  analyze                   stage 6: stats, CSVs and report');
     console.log('  analyze3                  stage 6b: three-arm report — is the gap content or form?');
     console.log('  decompose                 agent/human contrast with diff size held fixed');
+    console.log('  length                    record length vs change size, reported continuously');
     console.log('  chart                     stacked-bar SVG of the score distribution by arm');
     console.log('  export-questions          export the hand-written question worksheet (--n N)');
     console.log('  score-human-questions     score the arms against hand-written questions');

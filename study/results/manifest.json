@@ -1,6 +1,6 @@
 {
-  "publishedAtUtc": "2026-07-29T14:22:19.907Z",
-  "commit": "fd18ce913a9c00389c524b7e4938224d36b1f7a3",
+  "publishedAtUtc": "2026-07-29T14:28:26.923Z",
+  "commit": "dea2f9383c0798ed7f701994ba3b39ad9d1c55a3",
   "scored": true,
   "prsScored": 1000,
   "questionsScored": 3181,
@@ -17,6 +17,7 @@
     "three-arm-report.md",
     "three-arm-scores.csv",
     "size-decomposition.md",
+    "length-vs-size.md",
     "record-vs-synthetic.svg"
   ]
 }
