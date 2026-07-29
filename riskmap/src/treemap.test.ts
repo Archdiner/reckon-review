@@ -505,5 +505,32 @@ console.log('\n the SVG itself');
   ok('esc does not double-escape its own output', esc('a&b').includes('&amp;b'));
 }
 
+console.log('\nbrand ramp accessibility');
+
+{
+  const mono = (a: number[]) => a.every((v, i) => i === 0 || v >= a[i - 1]!);
+  const lumL = LIGHT_RAMP.map(relativeLuminance);
+  const lumD = DARK_RAMP.map(relativeLuminance);
+  ok('light ramp luminance ascends, so lightness alone carries the signal', mono(lumL));
+  ok('dark ramp luminance descends', mono([...lumD].reverse()));
+
+  // THE WCAG FLOOR, PINNED. The brand ramp initially failed this at 4.16 because one step in each
+  // direction landed at luminance ~0.19, where neither navy nor ice ink clears 4.5:1. The ramp now
+  // steps over that band. Without this test the next palette tweak would silently reintroduce it.
+  const worst = Math.min(
+    ...[...LIGHT_RAMP, ...DARK_RAMP].map((c) => contrastRatio(c, labelInkFor(c)))
+  );
+  console.log(`        (worst label contrast across both ramps: ${worst.toFixed(2)}:1)`);
+  ok('THE AA FLOOR: every ramp step can carry a legible label', worst >= 4.5);
+
+  // Hue is not allowed to be the carrier: the ramp must stay in one family so that colour vision
+  // deficiency does not destroy the reading. Checked as "blue channel is never the smallest".
+  const blueLed = [...LIGHT_RAMP, ...DARK_RAMP].every((c) => {
+    const r = parseInt(c.slice(1, 3), 16), g = parseInt(c.slice(3, 5), 16), b = parseInt(c.slice(5, 7), 16);
+    return b >= r && b >= g;
+  });
+  ok('every step stays in the blue family, so hue never carries the signal', blueLed);
+}
+
 console.log(failures === 0 ? '\nall treemap tests passed' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

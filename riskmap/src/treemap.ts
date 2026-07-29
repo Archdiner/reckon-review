@@ -278,6 +278,47 @@ function parseHex(s: string): RGB {
   return [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
 }
 
+/**
+ * The luminance band where NO label ink works, and why the ramp steps over it.
+ *
+ * Contrast is a ratio of (L + 0.05), so a fill sits legibly under near-black OR near-white only if
+ * its luminance is far enough from the crossover. Around L ≈ 0.19 both inks land near 4.2:1 —
+ * under the 4.5 WCAG AA floor for normal text, and it is not a rounding matter: a label on such a
+ * cell is genuinely hard to read, on exactly the large cells that carry labels.
+ *
+ * The naive fixes are both bad. Pure black ink clears the floor (4.71) but is off-palette and
+ * harsh. Dropping labels from mid-ramp cells hides the paths a reader most wants to see.
+ *
+ * So the ramp steps OVER the band: any sampled stop whose luminance falls inside it is pushed to
+ * the nearer edge. A sequential scale has no requirement of uniform luminance spacing — only of
+ * monotonicity, which this preserves — so the cost is a slightly uneven mid-ramp and the gain is
+ * that every cell in the artifact can carry a legible label. The tests assert both the
+ * monotonicity and the resulting worst-case contrast.
+ */
+const INK_DEAD_LO = 0.17;
+const INK_DEAD_HI = 0.24;
+
+/** Scale a colour's channels to hit a target luminance, staying on its own hue. */
+function toLuminance(color: string, target: number): string {
+  const rgb = parseHex(color);
+  let lo = 0;
+  let hi = 4;
+  for (let i = 0; i < 40; i++) {
+    const k = (lo + hi) / 2;
+    const trial = hex(rgb.map((v) => Math.max(0, Math.min(255, v * k))) as RGB);
+    if (relativeLuminance(trial) < target) lo = k;
+    else hi = k;
+  }
+  return hex(parseHex(color).map((v) => Math.max(0, Math.min(255, v * ((lo + hi) / 2)))) as RGB);
+}
+
+/** Push a stop out of the unreadable luminance band, to whichever edge is nearer. */
+function clearInkDeadBand(color: string): string {
+  const l = relativeLuminance(color);
+  if (l <= INK_DEAD_LO || l >= INK_DEAD_HI) return color;
+  return toLuminance(color, l - INK_DEAD_LO < INK_DEAD_HI - l ? INK_DEAD_LO - 0.005 : INK_DEAD_HI + 0.005);
+}
+
 /** Ramp through hand-picked control stops, sampled to COVERAGE_STEPS. Deterministic by construction. */
 function ramp(stops: string[], steps: number): string[] {
   const pts = stops.map(parseHex);
@@ -287,7 +328,8 @@ function ramp(stops: string[], steps: number): string[] {
     const lo = Math.min(pts.length - 1, Math.floor(t));
     const hi = Math.min(pts.length - 1, lo + 1);
     const f = t - lo;
-    out.push(hex([0, 1, 2].map((k) => pts[lo][k] + (pts[hi][k] - pts[lo][k]) * f) as RGB));
+    const raw = hex([0, 1, 2].map((k) => pts[lo][k] + (pts[hi][k] - pts[lo][k]) * f) as RGB);
+    out.push(clearInkDeadBand(raw));
   }
   return out;
 }
