@@ -72,8 +72,21 @@ function bootstrapDiffCI(a: number[], b: number[], iters = BOOTSTRAP_ITERS, seed
   return [diffs[Math.floor(iters * 0.025)], diffs[Math.floor(iters * 0.975)]];
 }
 
+/**
+ * Which stage-4 scoring protocol produced these scores, recovered from the artifacts.
+ *
+ * `mixed` means different PRs were scored under different modes — a partial re-run — and the
+ * pooled numbers are not one protocol's numbers. `unknown` means no blind.json was readable,
+ * which should not happen on a completed run and is reported rather than assumed.
+ */
+export type ObservedScoreMode = 'paired' | 'independent' | 'mixed' | 'unknown';
+
 export interface Analysis {
   mock: boolean;
+  /** Read from each PR's blind.json, never from a flag or a default, for the same reason
+   *  `publish` reads the models out of the run artifacts: a report that states its protocol
+   *  from a hardcoded string can state it wrongly and nothing catches it. */
+  scoreMode: ObservedScoreMode;
   n: number;
   nQuestions: number;
   rows: ResultRow[];
@@ -135,13 +148,15 @@ export function analyze(root: string): Analysis {
   let nQuestions = 0;
   let allReal: number[] = [];
   let allSyn: number[] = [];
+  const modes = new Set<string>();
 
   for (const d of dirs) {
     const meta = readMeta(d);
     const sc = readJson<PrScores>(d, 'scores.json');
     if (!sc || sc.scores.length === 0) continue;
-    const blind = readJson<{ model: string }>(d, 'blind.json');
+    const blind = readJson<{ model: string; mode?: string }>(d, 'blind.json');
     if (blind?.model === 'mock') mock = true;
+    if (blind?.mode) modes.add(blind.mode);
     const r = rowFor(meta, sc);
     rows.push(r);
     byId.set(r.id, r);
@@ -228,8 +243,14 @@ export function analyze(root: string): Analysis {
       syntheticMean: mean(rs.map((r) => r.syntheticMean)),
     }));
 
+  const scoreMode: ObservedScoreMode =
+    modes.size === 0 ? 'unknown'
+      : modes.size > 1 ? 'mixed'
+        : modes.has('independent') ? 'independent' : 'paired';
+
   return {
     mock,
+    scoreMode,
     n: rows.length,
     nQuestions,
     rows,
@@ -296,6 +317,66 @@ export function writeCsvs(root: string, outDir: string, a: Analysis): void {
 const f2 = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : 'n/a');
 const f1 = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : 'n/a');
 
+/**
+ * The protocol banner.
+ *
+ * This file used to state no scoring mode at all, which is how it came to sit next to
+ * `three-arm-report.md` showing a different real mean, a different gap and a different
+ * explicit rate over the same 1,000 PRs, with nothing on either page explaining why. A reader
+ * comparing them saw the study contradicting itself. The two numbers were never in conflict;
+ * only one of them was ever labelled.
+ *
+ * So the mode is read back from blind.json and printed at the top, and when it is the paired
+ * default the banner says outright that this is not the headline.
+ */
+function protocolBanner(mode: ObservedScoreMode): string[] {
+  if (mode === 'paired') {
+    return [
+      '> **This is the PAIRED-SCORING run, and it is not the study\'s headline.**',
+      '>',
+      '> Stage 4 defaults to `--score-mode paired`: the real record and the synthetic description',
+      '> go to the scorer together, as A and B, in a single call. Seeing both invites a contrast the',
+      '> rubric never asks for, and the pilot measured what that costs — paired presentation lifted',
+      '> the synthetic arm and left the real arm where it was. The reproducibility gap below is',
+      '> therefore wider than the same corpus gives when each text is judged alone.',
+      '>',
+      '> **The headline is `three-arm-report.md`**, which scores every text independently, one text',
+      '> per call, and adds the paraphrase form control. Expect it to report a smaller gap and a',
+      '> higher real-record explicit rate than this file. That difference is the protocol talking,',
+      '> not a different corpus: both cover the same PRs and the same generated questions.',
+      '>',
+      '> This run is published rather than dropped because the distance between the two files is the',
+      '> measurement of how much paired presentation moves the answer. Where they disagree, quote',
+      '> the independent ones.',
+      '',
+    ];
+  }
+  if (mode === 'independent') {
+    return [
+      '> **Scored INDEPENDENTLY** (`--score-mode independent`): each candidate judged alone in its',
+      '> own call, so there is no A/B contrast to bias the gap. Same scoring protocol as',
+      '> `three-arm-report.md`, which additionally carries the paraphrase form control.',
+      '',
+    ];
+  }
+  if (mode === 'mixed') {
+    return [
+      '> **MIXED SCORING MODES — the pooled numbers below are not one protocol\'s numbers.**',
+      '> Different PRs carry different `mode` values in their blind.json, which means a partial',
+      '> re-run. Paired and independent scoring produce different gaps on the same corpus, so',
+      '> pooling them averages two protocols into a figure that describes neither. Re-run',
+      '> `study score --force` under a single mode before quoting anything here.',
+      '',
+    ];
+  }
+  return [
+    '> **Scoring mode unknown.** No blind.json carried a `mode` field, so this report cannot say',
+    '> which stage-4 protocol produced its numbers. Paired and independent scoring give different',
+    '> gaps on the same corpus, so treat everything below as unattributed until the run is redone.',
+    '',
+  ];
+}
+
 export function formatReport(a: Analysis): string {
   const L: string[] = [];
   L.push('# Record-survival study — results');
@@ -307,7 +388,8 @@ export function formatReport(a: Analysis): string {
     L.push('> Every number below is an artifact of a hash function.');
     L.push('');
   }
-  L.push(`PRs scored: **${a.n}**   Questions scored: **${a.nQuestions}**   Empty PR body: **${f1(a.emptyBodyShare)}%**`);
+  L.push(...protocolBanner(a.scoreMode));
+  L.push(`Scoring mode: **${a.scoreMode}**   PRs scored: **${a.n}**   Questions scored: **${a.nQuestions}**   Empty PR body: **${f1(a.emptyBodyShare)}%**`);
   L.push('');
 
   L.push('## 1. Answerability of the real record');

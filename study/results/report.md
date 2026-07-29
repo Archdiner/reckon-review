@@ -1,6 +1,23 @@
 # Record-survival study — results
 
-PRs scored: **1000**   Questions scored: **3181**   Empty PR body: **16.4%**
+> **This is the PAIRED-SCORING run, and it is not the study's headline.**
+>
+> Stage 4 defaults to `--score-mode paired`: the real record and the synthetic description
+> go to the scorer together, as A and B, in a single call. Seeing both invites a contrast the
+> rubric never asks for, and the pilot measured what that costs — paired presentation lifted
+> the synthetic arm and left the real arm where it was. The reproducibility gap below is
+> therefore wider than the same corpus gives when each text is judged alone.
+>
+> **The headline is `three-arm-report.md`**, which scores every text independently, one text
+> per call, and adds the paraphrase form control. Expect it to report a smaller gap and a
+> higher real-record explicit rate than this file. That difference is the protocol talking,
+> not a different corpus: both cover the same PRs and the same generated questions.
+>
+> This run is published rather than dropped because the distance between the two files is the
+> measurement of how much paired presentation moves the answer. Where they disagree, quote
+> the independent ones.
+
+Scoring mode: **paired**   PRs scored: **1000**   Questions scored: **3181**   Empty PR body: **16.4%**
 
 ## 1. Answerability of the real record
 

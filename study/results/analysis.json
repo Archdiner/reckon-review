@@ -1,5 +1,6 @@
 {
   "mock": false,
+  "scoreMode": "paired",
   "n": 1000,
   "nQuestions": 3181,
   "overall": {
