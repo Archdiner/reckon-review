@@ -47,17 +47,53 @@ console.log('dimension tests');
 }
 
 {
-  // 3 commits from an inactive contributor, 1 from an active one.
-  const edits = [edit('c1', 'gone'), edit('c2', 'gone'), edit('c3', 'gone'), edit('c4', 'here')];
+  // THE HEADLINE IS LAST-TOUCH FILE SHARE. Four files: three last touched by someone inactive,
+  // one by an active contributor. The commit counts deliberately point the OTHER way — the
+  // active contributor made most of the commits — so the two measures cannot be confused.
+  const edits = [
+    edit('c1', 'gone', NOW, 'src/a.ts'),
+    edit('c2', 'gone', NOW, 'src/b.ts'),
+    edit('c3', 'gone', NOW, 'src/c.ts'),
+    edit('c4', 'here', NOW, 'src/d.ts'),
+    edit('c5', 'here', NOW, 'src/d.ts'),
+    edit('c6', 'here', NOW, 'src/d.ts'),
+  ];
+  const lastToucher = new Map([
+    ['src/a.ts', 'gone'], ['src/b.ts', 'gone'], ['src/c.ts', 'gone'], ['src/d.ts', 'here'],
+  ]);
   const r = computeRegion(
-    { region: 'src', edits, commits: [], whoOf: new Map() },
+    { region: 'src', edits, commits: [], whoOf: new Map(), lastToucher },
     new Set(['gone']),
-    NOW,
+    24,
     DEFAULT_THRESHOLDS
   );
-  ok('orphaned share counts commits, not contributors', Math.abs(r.orphanedShare - 0.75) < 1e-9);
-  ok('concentration is the largest single share', Math.abs(r.concentration - 0.75) < 1e-9);
+  ok('THE HEADLINE: orphaned share is the share of FILES last touched by an inactive contributor', Math.abs(r.orphanedShare - 0.75) < 1e-9);
+  ok('the old commit-share measure is kept separately and disagrees here', Math.abs(r.orphanedCommitShare - 0.5) < 1e-9);
+  ok('concentration is the largest single share of commits', Math.abs(r.concentration - 0.5) < 1e-9);
   ok('contributor counts are reported', r.contributors === 2 && r.inactiveContributors === 1);
+}
+
+{
+  // THE CELL THE MAP EXISTS TO FIND: a region under active development whose files were mostly
+  // last written by people who have gone. Commit-share orphaning scores this at 0.09 and cannot
+  // express it; last-touch file share scores it at 0.75.
+  const edits = [
+    edit('old1', 'gone', NOW, 'src/a.ts'),
+    edit('old2', 'gone', NOW, 'src/b.ts'),
+    edit('old3', 'gone', NOW, 'src/c.ts'),
+    ...Array.from({ length: 10 }, (_, i) => edit(`new${i}`, 'here', NOW, 'src/d.ts')),
+  ];
+  const lastToucher = new Map([
+    ['src/a.ts', 'gone'], ['src/b.ts', 'gone'], ['src/c.ts', 'gone'], ['src/d.ts', 'here'],
+  ]);
+  const r = computeRegion(
+    { region: 'src', edits, commits: [], whoOf: new Map(), lastToucher },
+    new Set(['gone']),
+    24,
+    DEFAULT_THRESHOLDS
+  );
+  ok('THE BUSY-AND-ORPHANED CELL: file share stays high while the region is active', r.orphanedShare === 0.75);
+  ok('commit share is diluted by the activity, which is why it was replaced', r.orphanedCommitShare < 0.25);
 }
 
 {
@@ -70,7 +106,7 @@ console.log('dimension tests');
     edit('n2', 'p2'),
     edit('n3', 'p3'),
   ];
-  const r = computeRegion({ region: 'src', edits, commits: [], whoOf: new Map() }, new Set(), NOW, DEFAULT_THRESHOLDS);
+  const r = computeRegion({ region: 'src', edits, commits: [], whoOf: new Map(), lastToucher: new Map() }, new Set(), NOW, DEFAULT_THRESHOLDS);
   ok('THE WIDE-COMMIT CASE: one commit counts once however many files it touched', Math.abs(r.concentration - 0.25) < 1e-9);
 }
 
@@ -86,7 +122,7 @@ console.log('dimension tests');
     ),
   ];
   const r = computeRegion(
-    { region: 'src', edits: [edit('a', 'w'), edit('b', 'w'), edit('c', 'w')], commits, whoOf: new Map() },
+    { region: 'src', edits: [edit('a', 'w'), edit('b', 'w'), edit('c', 'w')], commits, whoOf: new Map(), lastToucher: new Map() },
     new Set(),
     NOW,
     DEFAULT_THRESHOLDS
@@ -95,17 +131,28 @@ console.log('dimension tests');
 }
 
 {
-  const base = computeRegion({ region: 'r', edits: [edit('c1', 'gone')], commits: [], whoOf: new Map() }, new Set(['gone']), NOW, DEFAULT_THRESHOLDS);
+  const base = computeRegion({ region: 'r', edits: [edit('c1', 'gone')], commits: [], whoOf: new Map(), lastToucher: new Map() }, new Set(['gone']), NOW, DEFAULT_THRESHOLDS);
   const hot = { ...base, commitsPerMonth: 10, concentration: 0.9, recordCoveragePercentile: 5 };
-  ok('four tests clearing flags the region', applyFlags(hot, DEFAULT_THRESHOLDS, true, 2).flags.length === 4);
-  ok('the record test is skipped when the record is unusable', applyFlags(hot, DEFAULT_THRESHOLDS, false, 2).flags.length === 3);
+  const hot4 = { ...hot, orphanedShare: 0.9 };
+  ok('four tests clearing flags the region', applyFlags(hot4, DEFAULT_THRESHOLDS, true, 2).flags.length === 4);
+  ok('the record test is skipped when the record is unusable', applyFlags(hot4, DEFAULT_THRESHOLDS, false, 2).flags.length === 3);
   const cold = { ...base, commitsPerMonth: 0.1, concentration: 0.2, recordCoveragePercentile: 90 };
   ok('a region clearing one test does not flag', !applyFlags(cold, DEFAULT_THRESHOLDS, true, 2).flagged);
 
-  // THE ABANDONED-REGION CASE, which the spec's "three of four" rule could not express:
-  // heavily orphaned, one dominant author, and quiet precisely BECAUSE it was abandoned.
+  // THE DEAD-CODE CASE: heavily orphaned, one dominant author, and quiet precisely BECAUSE it
+  // was abandoned. This MUST NOT flag. An earlier rule surfaced exactly these — grafana's two
+  // superseded subsystems at 0.3 and 0.5 commits a month — and a reader's correct reaction is
+  // "so what". Nobody needs to understand code that is on its way out.
   const abandoned = { ...base, orphanedShare: 0.9, concentration: 0.8, commitsPerMonth: 0.2 };
-  ok('THE ABANDONED-REGION CASE: orphaned + concentrated flags even when quiet', applyFlags(abandoned, DEFAULT_THRESHOLDS, false, 8).flagged);
+  ok('THE DEAD-CODE CASE: orphaned and concentrated but quiet does NOT flag', !applyFlags(abandoned, DEFAULT_THRESHOLDS, false, 8).flagged);
+
+  // THE CELL THE MAP IS FOR: the same ownership profile, still moving.
+  const live = { ...base, orphanedShare: 0.9, concentration: 0.8, commitsPerMonth: 12 };
+  ok('THE LIVE-AND-ORPHANED CELL: the same region, still moving, DOES flag', applyFlags(live, DEFAULT_THRESHOLDS, false, 8).flagged);
+
+  // Churn alone is a busy region, not a risk.
+  const justBusy = { ...base, orphanedShare: 0.1, concentration: 0.1, commitsPerMonth: 50 };
+  ok('churn without an ownership signal does not flag', !applyFlags(justBusy, DEFAULT_THRESHOLDS, false, 8).flagged);
 
   // Churn and low coverage without an ownership signal describe a busy, terse region — which
   // is not what this artifact is about, and must not flag.
@@ -114,13 +161,18 @@ console.log('dimension tests');
 
   // With the record dimension unscored only three tests exist, so a literal three-of-four
   // would silently become unanimity. The requirement adapts instead.
-  const twoOfThree = { ...base, orphanedShare: 0.9, concentration: 0.9, commitsPerMonth: 0.1 };
-  ok('the requirement adapts when only three tests are available', applyFlags(twoOfThree, DEFAULT_THRESHOLDS, false, 8).flagged);
+  // THE SELECTION BUG: the requirement must NOT depend on how much happened to be measurable.
+  // An earlier version needed 2 of 3 unscored and 3 of 4 scored, so the same region could flag
+  // only when the tool had FAILED to measure it. Scoring must only ever add evidence.
+  const same = { ...base, orphanedShare: 0.9, concentration: 0.9, commitsPerMonth: 12 };
+  const unscored = applyFlags(same, DEFAULT_THRESHOLDS, false, 8);
+  const scoredGood = applyFlags({ ...same, recordCoverage: 0.9, recordCoveragePercentile: 95 }, DEFAULT_THRESHOLDS, true, 8);
+  ok('THE SELECTION BUG: scoring coverage does not change whether a region flags', unscored.flagged === scoredGood.flagged && unscored.flagged);
 }
 
 {
   const mk = (cpm: number) => ({
-    ...computeRegion({ region: 'r', edits: [edit('c1', 'w')], commits: [], whoOf: new Map() }, new Set(), NOW, DEFAULT_THRESHOLDS),
+    ...computeRegion({ region: 'r', edits: [edit('c1', 'w')], commits: [], whoOf: new Map(), lastToucher: new Map() }, new Set(), NOW, DEFAULT_THRESHOLDS),
     commitsPerMonth: cpm,
   });
   ok(
@@ -135,7 +187,7 @@ console.log('dimension tests');
 
 {
   const mk = (p: string, o: number, c: number) => ({
-    ...computeRegion({ region: p, edits: [edit('x', 'w')], commits: [], whoOf: new Map() }, new Set(), NOW, DEFAULT_THRESHOLDS),
+    ...computeRegion({ region: p, edits: [edit('x', 'w')], commits: [], whoOf: new Map(), lastToucher: new Map() }, new Set(), NOW, DEFAULT_THRESHOLDS),
     orphanedShare: o,
     commitsPerMonth: c,
     flagged: true,
@@ -225,17 +277,16 @@ console.log('\nregression tests for defects found in review');
   // example said "at least 3 of these tests" above two rows carrying two chips each.
   const withRecord = effectiveRule(DEFAULT_THRESHOLDS, true);
   const withoutRecord = effectiveRule(DEFAULT_THRESHOLDS, false);
-  ok('effective rule with the record test available', withRecord.need === 3 && withRecord.available === 4);
-  ok('THE SELF-CONTRADICTING PAGE: without coverage the rule is 2 of 3', withoutRecord.need === 2 && withoutRecord.available === 3);
-  ok('a raised --min-flags cannot exceed what is testable', effectiveRule({ ...DEFAULT_THRESHOLDS, minFlags: 4 }, false).need === 2);
+  ok('the requirement is uniform whether or not coverage was scored', withRecord.need === withoutRecord.need && withRecord.need === 2);
+  ok('available tests are still reported so the page can say what was measurable', withRecord.available === 4 && withoutRecord.available === 3);
 }
 
 {
   // Churn must divide by the observed span, not the configured window. An 18-month repo was
   // having every rate divided by 60.
   const edits = Array.from({ length: 20 }, (_, i) => edit(`c${i}`, 'w'));
-  const short = computeRegion({ region: 'r', edits, commits: [], whoOf: new Map() }, new Set(), 18, DEFAULT_THRESHOLDS);
-  const long = computeRegion({ region: 'r', edits, commits: [], whoOf: new Map() }, new Set(), 60, DEFAULT_THRESHOLDS);
+  const short = computeRegion({ region: 'r', edits, commits: [], whoOf: new Map(), lastToucher: new Map() }, new Set(), 18, DEFAULT_THRESHOLDS);
+  const long = computeRegion({ region: 'r', edits, commits: [], whoOf: new Map(), lastToucher: new Map() }, new Set(), 60, DEFAULT_THRESHOLDS);
   ok('THE YOUNG-REPO CASE: churn uses the observed span', Math.abs(short.commitsPerMonth - 20 / 18) < 1e-9);
   ok('a longer span gives a lower rate for the same commits', long.commitsPerMonth < short.commitsPerMonth);
 }

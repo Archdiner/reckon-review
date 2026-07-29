@@ -113,15 +113,15 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
           ? '<td class="num na" title="not scored">—</td>'
           : `<td class="num">${pct(r.recordCoverage)}<span class="sub">p${r.recordCoveragePercentile?.toFixed(0) ?? '?'}</span></td>`;
       return `
-      <tr>
-        <td class="region"><code>${esc(r.path)}</code><div class="chips">${flagChips(r)}</div></td>
+      <tr class="${r.flagged ? 'flagged' : 'sub-threshold'}">
+        <td class="region"><code>${esc(r.path)}</code>${r.flagged ? '<span class="mark">flagged</span>' : ''}<div class="chips">${flagChips(r)}</div></td>
         <td class="num strong">${pct(r.orphanedShare)}<span class="sub">${r.inactiveContributors}/${r.contributors} inactive</span></td>
         <td class="num">${pct(r.concentration)}</td>
         <td class="num">${r.commitsPerMonth.toFixed(1)}<span class="sub">${Math.round(r.linesPerMonth).toLocaleString('en-US')} lines</span></td>
         ${recordShown ? cov : ''}
         <td class="num">${fmtDate(r.lastSubstantiveExplanation)}</td>
       </tr>
-      <tr class="why"><td colspan="${recordShown ? 6 : 5}"><p>${esc(explain(r, t, cal))}</p><p class="action">${esc(ACTION)}</p></td></tr>`;
+      <tr class="why"><td colspan="${recordShown ? 6 : 5}"><p>${esc(explain(r, t, cal))}</p>${r.flagged ? `<p class="action">${esc(ACTION)}</p>` : '<p class="below">Below the line — shown for the gradient, not as a finding.</p>'}</td></tr>`;
     })
     .join('');
 
@@ -166,6 +166,11 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
   .chips { margin-top:.3rem }
   .chip { display:inline-block; background:var(--chip); color:var(--muted); border-radius:2px;
           padding:.05rem .35rem; font-size:.68rem; margin-right:.2rem; white-space:nowrap }
+  .mark { display:inline-block; margin-left:.4rem; padding:.05rem .35rem; border-radius:2px;
+          background:var(--accent); color:var(--bg); font-size:.66rem; font-weight:700;
+          text-transform:uppercase; letter-spacing:.04em }
+  tr.sub-threshold td { opacity:.62 }
+  tr.why .below { font-style:italic }
   tr.why td { border-top:0; padding-top:0; color:var(--muted); font-size:.86rem }
   tr.why p { margin:.15rem 0 }
   tr.why .action { color:var(--fg); font-weight:600 }
@@ -241,11 +246,12 @@ export function renderHtml(map: RiskMap, cal: Calibration | null): string {
 
     <h2>Thresholds</h2>
     <p>
-      A region is listed when it clears at least <strong>${rule.need}</strong> of the
-      ${rule.available} available tests, <strong>and at least one of those must be an ownership
-      test</strong> (orphaned or concentrated). Churn and thin documentation amplify an ownership
-      problem; on their own they describe a busy or a terse region, which is not what this map is
-      about.
+      A region is <strong>flagged</strong> when it is <strong>still moving</strong> (churn at or
+      above this repository's median region) <strong>and</strong> carries an ownership signal
+      (orphaned or concentrated). Both are required. Churn alone describes a busy region;
+      ownership alone describes dead code, which nobody needs to act on. The table below shows
+      the top ten regions by rank whether or not they clear the rule, because the gradient is
+      more informative than the cut. ${rule.available} of the four dimensions were measurable here.
       They are printed because a reader who disagrees with them should be able to see exactly what
       they were.
     </p>

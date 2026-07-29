@@ -41,8 +41,15 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
    * phenomenon, and a two-year window cannot see it by construction: it can only ever contain
    * two years of contributors, nearly all of whom are still around. 60 months is the compromise
    * — long enough for the signal, short enough that the clone stays cheap.
+   *
+   * REVISED TO 24. The 60-month reading above was drawn with a COMMIT-SHARE orphan measure,
+   * which cannot express "still moving and nobody left understands it" at any window. With
+   * last-touch file share the long window mostly selects the longest-abandoned regions —
+   * dormancy, not risk — so the window is back to 24 months and the orphan signal comes from
+   * the metric rather than from reaching further back. Inactivity is still judged against the
+   * FULL history, not the window, so a 24-month window does not make everyone look active.
    */
-  windowMonths: 60,
+  windowMonths: 24,
   orphanedShare: 0.5,
   concentration: 0.5,
   /**
@@ -101,6 +108,8 @@ export interface RegionInput {
   commits: Commit[];
   /** The `who` key per commit sha, so message-level and edit-level agree. */
   whoOf: Map<string, string>;
+  /** Path -> identity of the most recent contributor to touch it. Drives the headline. */
+  lastToucher: Map<string, string>;
 }
 
 /**
@@ -132,6 +141,9 @@ export function computeRegion(
   }
 
   const contributors = byWho.size;
+  const files = new Set(edits.map((e) => e.path));
+  let orphanFiles = 0;
+  for (const f of files) if (input.lastToucher.get(f) !== undefined && inactive.has(input.lastToucher.get(f)!)) orphanFiles++;
   let inactiveContributors = 0;
   let orphanedCommits = 0;
   let largest = 0;
@@ -169,7 +181,8 @@ export function computeRegion(
     linesChanged,
     contributors,
     inactiveContributors,
-    orphanedShare: nCommits ? orphanedCommits / nCommits : 0,
+    orphanedShare: files.size ? orphanFiles / files.size : 0,
+    orphanedCommitShare: nCommits ? orphanedCommits / nCommits : 0,
     concentration: nCommits ? largest / nCommits : 0,
     commitsPerMonth: nCommits / months,
     linesPerMonth: linesChanged / months,
@@ -236,9 +249,20 @@ export function applyFlags(
   // coverage value at all, so counting the record test as available silently raises the bar to
   // three of three and flags nothing. That is how grafana reported zero flagged regions while
   // `pkg/framework` sat at 0.85 orphaned and 0.80 concentrated.
+  // CHURN IS A HARD REQUIREMENT, NOT ONE OF FOUR OPTIONAL TESTS, and so is an ownership signal.
+  //
+  // The map's claim is about code that is STILL LIVE and that nobody remaining understands. A
+  // rule that let churn be substituted for surfaced dormant code instead — on grafana it
+  // returned two superseded subsystems at 0.3 and 0.5 commits a month, which a reader correctly
+  // reads as "so what". Dead code is not a risk anyone needs to act on.
+  //
+  // THE REQUIREMENT NO LONGER VARIES WITH HOW MUCH WAS MEASURABLE. An earlier version needed 2
+  // of 3 when coverage was unscored and 3 of 4 when it was scored, so the same region could flag
+  // only when the tool had failed to measure it — selecting for unmeasured regions, invisibly.
+  // Scoring coverage must only ever ADD evidence.
   const ownership = flags.includes('orphaned') || flags.includes('concentrated');
-  const { need } = effectiveRule(t, recordUsable && r.recordCoveragePercentile !== null);
-  return { ...r, flags, flagged: ownership && flags.length >= need };
+  const live = flags.includes('hot');
+  return { ...r, flags, flagged: live && ownership };
 }
 
 /**
@@ -250,8 +274,10 @@ export function applyFlags(
  * ownership requirement, which is the load-bearing half of the rule.
  */
 export function effectiveRule(t: Thresholds, recordTested: boolean): { need: number; available: number } {
-  const available = recordTested ? 4 : 3;
-  return { need: Math.max(2, Math.min(t.minFlags, available - 1)), available };
+  void t;
+  // Two requirements, both mandatory: still moving, and an ownership signal. The count of
+  // available tests is reported only so the page can say what could have been measured.
+  return { need: 2, available: recordTested ? 4 : 3 };
 }
 
 /**

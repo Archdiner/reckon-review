@@ -194,16 +194,24 @@ export async function readRepoName(repo: string): Promise<string> {
  */
 export async function readAuthorRoster(
   repo: string,
-  before?: number
-): Promise<{ name: string; email: string }[]> {
-  const args = ['log', '--no-merges', `--format=%an${UNIT}%ae`];
+  before?: number,
+  withDates = false
+): Promise<{ name: string; email: string; at: number }[]> {
+  const args = [
+    'log',
+    '--no-merges',
+    '--date=iso-strict',
+    `--format=%an${UNIT}%ae${UNIT}%ad`,
+  ];
   if (before) args.push(`--before=${new Date(before).toISOString()}`);
   const { stdout } = await exec('git', args, { cwd: repo, maxBuffer: MAX_BUFFER });
-  const out: { name: string; email: string }[] = [];
+  const out: { name: string; email: string; at: number }[] = [];
   for (const line of stdout.split('\n')) {
     if (!line) continue;
-    const [name = '', email = ''] = line.split(UNIT);
-    out.push({ name, email });
+    const [name = '', email = '', date = ''] = line.split(UNIT);
+    const at = withDates ? Date.parse(date) : 0;
+    if (withDates && !Number.isFinite(at)) continue;
+    out.push({ name, email, at });
   }
   return out;
 }

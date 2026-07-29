@@ -50,30 +50,40 @@ function assertNoDiffInScorerPrompt(prompt: string): void {
   }
 }
 
-function assertRecordNotInQuestionPrompt(prompt: string, message: string): void {
-  // The question generator receives the diff and nothing else. A commit message that is a
-  // subset of the diff is legitimate (a docs commit adds the prose it describes), so the check
-  // is on distinctive CONSECUTIVE runs rather than on any overlap — the study made exactly this
-  // mistake once and its correction is the reason this is worded this way.
-  //
-  // THE FIRST VERSION OF THIS GUARD COULD NOT FIRE. It filtered short words OUT of the message
-  // and then searched the prompt for the joined remainder, so the shingle it looked for did not
-  // occur even in the message it was built from. Handing it the commit message verbatim as the
-  // "prompt" passed. A guard that cannot fire is worse than no guard, because it is read as
-  // evidence. Shingles are now consecutive runs of the ORIGINAL text, normalised only for
-  // whitespace and case.
-  const norm = (x: string) => x.toLowerCase().replace(/\s+/g, ' ').trim();
-  const hay = norm(prompt);
-  const words = norm(message).split(' ').filter(Boolean);
-  if (words.length < 8) return;
-  for (let i = 0; i + 8 <= words.length; i++) {
-    const shingle = words.slice(i, i + 8).join(' ');
-    // A run of pure path/identifier tokens can legitimately appear in both.
-    if (/^[\w./-]+( [\w./-]+)*$/.test(shingle) && !/[a-z]{3,} [a-z]{3,} [a-z]{3,}/.test(shingle)) continue;
-    if (hay.includes(shingle)) {
+/**
+ * Containment: the generator's input must be DERIVED FROM THE DIFF and nothing else.
+ *
+ * ── A CORRECTION, AND IT IS THE STUDY'S CORRECTION MADE TWICE ─────────────────────────────
+ *
+ * The first version of this guard was inert — it filtered short words out of the message and
+ * searched for a shingle absent even from the message it came from. Repairing it to compare the
+ * generator input against the commit message made it fire on the first real run, on the phrase
+ * "when enabled, objects are uploaded without an acl". That is NOT a leak. It is a commit that
+ * added a doc comment saying the same thing its message says, so the prose is genuinely in the
+ * diff, and the digest is built from the diff.
+ *
+ * Which is the whole point: an overlap check between the generator input and the record CANNOT
+ * DETECT WHAT IT CLAIMS TO. The digest is constructed from `diff.patch`; every token in it
+ * already came from the diff, so overlap with the commit message can only ever mean the two
+ * genuinely share content. The study hit this exact wall, retracted the check, and replaced it
+ * with a containment assertion. This is that replacement, arrived at the same way — by the
+ * check firing on a case that was not a leak.
+ *
+ * So the assertion is structural: every non-trivial line of the generator input must appear in
+ * the diff it was digested from. A leak — record prose spliced into the prompt — introduces a
+ * line the diff does not contain, and that is detectable. Shared content is not.
+ */
+function assertDerivedFromDiff(digest: string, diff: string): void {
+  const haystack = diff.replace(/\s+/g, ' ');
+  for (const raw of digest.split('\n')) {
+    const line = raw.replace(/^[+\-\s]+/, '').trim();
+    // Short lines and structural scaffolding collide by chance; only substantive prose or code
+    // carries enough information for the test to mean anything.
+    if (line.length < 24) continue;
+    if (!haystack.includes(line.replace(/\s+/g, ' '))) {
       throw new LeakageError(
-        `A question-generation input contained an 8-word run from the commit message: "${shingle.slice(0, 80)}". ` +
-          'Questions must come from the diff alone or the record is being scored against itself.'
+        `A question-generation input contained a line absent from the diff it was digested ` +
+          `from: "${line.slice(0, 90)}". Questions must be derived from the diff alone.`
       );
     }
   }
@@ -181,7 +191,7 @@ export async function computeCoverage(
       // had already been made — so a leak into the generator prompt was unobservable by the
       // thing whose error message claimed to be checking exactly that.
       const digest = diffDigest(diff);
-      assertRecordNotInQuestionPrompt(digest, record);
+      assertDerivedFromDiff(digest, diff);
 
       let questions: { question: string }[];
       try {
@@ -192,10 +202,6 @@ export async function computeCoverage(
         continue;
       }
       if (questions.length === 0) continue;
-
-      for (const q of questions) {
-        assertRecordNotInQuestionPrompt(q.question, record);
-      }
 
       usedCommits++;
       for (const q of questions) {

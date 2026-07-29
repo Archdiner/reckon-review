@@ -87,8 +87,24 @@ export interface Region {
   inactiveContributors: number;
 
   // ---- the dimensions. Displayed as components, never summed into a score. ----
-  /** Share of region commits made by contributors now inactive repo-wide. [0,1] */
+  /**
+   * THE HEADLINE. Of the files in this region, the share whose MOST RECENT change was made by
+   * a contributor now inactive repo-wide. [0,1]
+   *
+   * This replaced a commit-share measure, and the replacement is the difference between
+   * measuring dormancy and measuring risk. Commit share puts recent commits by active people in
+   * the same denominator, so activity mechanically dilutes orphaning and the two are
+   * anti-correlated BY CONSTRUCTION — no threshold and no window can produce a region that is
+   * both busy and orphaned. Measured on grafana across 24/36/60-month windows and with the
+   * orphan and churn windows decoupled: the busy-and-orphaned cell was empty every time.
+   *
+   * Last-touch file share asks the knowledge question instead — of the code that is here now,
+   * how much was last written by someone who has gone — and a region can score high on it while
+   * under active development, because recent commits touch only part of the file set.
+   */
   orphanedShare: number;
+  /** The old commit-share measure, kept as a secondary reading. [0,1] */
+  orphanedCommitShare: number;
   /** Share of region commits from the single largest contributor. [0,1] */
   concentration: number;
   /** Commits per month over the churn window. */

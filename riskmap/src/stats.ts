@@ -51,6 +51,13 @@ export interface Interval {
   lo: number;
   hi: number;
   n: number;
+  /**
+   * Bootstrap resamples thrown away because the statistic was undefined on them — only ever
+   * non-zero for `bootstrapRatio`, where a resample can land a denominator of exactly zero.
+   * Reported rather than hidden: an interval built from 4,000 of 5,000 resamples is a different
+   * object from one built from all of them, and the reader should be able to see which they have.
+   */
+  discarded?: number;
 }
 
 /**
@@ -84,5 +91,65 @@ export function bootstrapDifference(
     lo: quantile(diffs, 0.025),
     hi: quantile(diffs, 0.975),
     n: a.length + b.length,
+  };
+}
+
+/**
+ * Bootstrap the RATIO of means between two independent groups of regions — a risk ratio when
+ * the inputs are 0/1 indicators, which is the use this exists for.
+ *
+ * Same resampling scheme as `bootstrapDifference`: with replacement, at the region level,
+ * percentile interval. The ratio is reported alongside the difference rather than instead of it
+ * because they fail in opposite ways — a ratio is unstable when the baseline is small and a
+ * difference hides how large the effect is relative to that baseline.
+ *
+ * ZERO DENOMINATORS ARE DISCARDED, NOT EMITTED AS Infinity. A resample of the comparison arm can
+ * contain no events at all, especially when the baseline rate is low and the arm is small. The
+ * ratio is then undefined, and the two obvious alternatives are both wrong: `Infinity` poisons
+ * the sort and drags the upper bound to infinity, and continuity corrections (adding 0.5 to
+ * every cell) silently change the estimand. So the resample is dropped and the count of drops is
+ * returned in `discarded`, which lets the report say how much of the interval is missing. If a
+ * large share was discarded the upper bound is not trustworthy and the reader can see that.
+ *
+ * Assumes non-negative inputs, which is what a ratio of rates is defined over.
+ */
+export function bootstrapRatio(
+  a: number[],
+  b: number[],
+  iterations = 5000,
+  seed = 20260729
+): Interval {
+  const rng = mulberry32(seed);
+  const mb = mean(b);
+  const estimate = mb === 0 ? Number.NaN : mean(a) / mb;
+  // n === 0 is the caller's "not computed" signal, exactly as in bootstrapDifference. NaN rather
+  // than 0 for the estimate, because a printed 0.000 risk ratio is a claim and this is not one.
+  if (a.length === 0 || b.length === 0 || mb === 0) {
+    return { estimate, lo: Number.NaN, hi: Number.NaN, n: 0, discarded: 0 };
+  }
+
+  const ratios: number[] = [];
+  let discarded = 0;
+  for (let i = 0; i < iterations; i++) {
+    let sa = 0;
+    for (let j = 0; j < a.length; j++) sa += a[Math.floor(rng() * a.length)]!;
+    let sb = 0;
+    for (let j = 0; j < b.length; j++) sb += b[Math.floor(rng() * b.length)]!;
+    if (sb === 0) {
+      discarded++;
+      continue;
+    }
+    ratios.push(sa / a.length / (sb / b.length));
+  }
+  if (ratios.length === 0) {
+    return { estimate, lo: Number.NaN, hi: Number.NaN, n: 0, discarded };
+  }
+  ratios.sort((x, y) => x - y);
+  return {
+    estimate,
+    lo: quantile(ratios, 0.025),
+    hi: quantile(ratios, 0.975),
+    n: a.length + b.length,
+    discarded,
   };
 }

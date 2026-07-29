@@ -67,6 +67,11 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
   // clustering would merge real people into a release account through a shared display name.
   const marked = raw.map((c) => ({ ...c, bot: isBot(c.authorName, c.authorEmail) }));
 
+  // Full-history author dates, for the inactivity judgement only. No --numstat, so it is cheap.
+  const fullHistory = (await readAuthorRoster(opts.repo, opts.asOf ? asOf : undefined, true)).map(
+    (r) => ({ authorName: r.name, authorEmail: r.email, at: r.at, bot: isBot(r.name, r.email) })
+  );
+
   // IDENTITY CLUSTERING READS THE FULL HISTORY, NOT THE WINDOW. An earlier version fed it the
   // windowed commits and argued in a comment that this was safe because the inactivity cutoff
   // sits inside the window. That argument only covered `lastSeen`; it missed clustering, which
@@ -90,9 +95,12 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
 
   // Activity is repo-wide and UNWINDOWED on purpose: the question is whether a person is still
   // around, and any commit at all is evidence of that.
-  const activity = marked
+  // INACTIVITY IS JUDGED AGAINST THE FULL HISTORY, not the measurement window. With a 24-month
+  // window, deriving activity from windowed commits would make anyone whose last commit predates
+  // the window invisible rather than inactive, and a short window would flatter every repo.
+  const activity = fullHistory
     .filter((c) => !c.bot && c.at <= asOf)
-    .map((c) => ({ who: whoOf(c), at: c.at }));
+    .map((c) => ({ who: ids.keyFor(c.authorName, c.authorEmail), at: c.at }));
   const inactive = inactiveIdentities(activity, inactivityCutoff);
 
   const edits: Edit[] = [];
@@ -121,6 +129,10 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
     else editsByRegion.set(r, [e]);
   }
 
+  // Most recent contributor per file, which is what the headline orphan measure keys on.
+  const lastToucher = new Map<string, string>();
+  for (const e of [...edits].sort((a, b) => a.at - b.at)) lastToucher.set(e.path, e.who);
+
   const commitsBySha = new Map(kept.map((c) => [c.sha, c]));
   const commitsByRegion = new Map<string, Commit[]>();
   for (const [region, list] of editsByRegion) {
@@ -145,7 +157,7 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
   for (const [region, list] of editsByRegion) {
     regions.push(
       computeRegion(
-        { region, edits: list, commits: commitsByRegion.get(region) ?? [], whoOf: new Map() },
+        { region, edits: list, commits: commitsByRegion.get(region) ?? [], whoOf: new Map(), lastToucher },
         inactive,
         spanMonths,
         t
@@ -188,11 +200,22 @@ export async function buildMap(opts: BuildOpts): Promise<{ map: RiskMap; calibra
   const lowMeaning = new Set(
     [...editsByRegion].filter(([r, e]) => isLowMeaningRegion(r, e)).map(([r]) => r)
   );
-  const ranked = rankRegions(regions);
-  const top = [
-    ...ranked.filter((r) => !lowMeaning.has(r.path)),
-    ...ranked.filter((r) => lowMeaning.has(r.path)),
-  ].slice(0, 10);
+  // TEN ROWS ALWAYS, RANKED, WITH THE FLAGGED ONES MARKED — not only the regions that cleared
+  // the rule. Two rows in a 37,000-commit repository reads as a tool that found nothing, and a
+  // reader learns more from the gradient than from the cut: the rows just under the line are
+  // where they recognise their own codebase and start arguing about the threshold, which is the
+  // conversation this artifact exists to start.
+  const rank = (r: Region) =>
+    (r.flagged ? 2 : 0) + (r.flags.includes('hot') && r.orphanedShare >= 0.25 ? 1 : 0);
+  const ordered = [...regions].sort(
+    (a, b) =>
+      rank(b) - rank(a) ||
+      Number(lowMeaning.has(a.path)) - Number(lowMeaning.has(b.path)) ||
+      b.orphanedShare - a.orphanedShare ||
+      b.commitsPerMonth - a.commitsPerMonth
+  );
+  const top = ordered.slice(0, 10);
+  void rankRegions;
 
   regions.sort((a, b) => b.orphanedShare - a.orphanedShare || b.commitsPerMonth - a.commitsPerMonth);
 
