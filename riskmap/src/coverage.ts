@@ -28,6 +28,10 @@
 
 import type { LlmBackend } from '@reckon/core';
 import { decompose } from '@reckon/core';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { assertDerivedFromDiff, assertNoRawDiff, LeakageError } from './vendor/guard.js';
 import { readCommitDiff } from './gitlog.js';
 import { diffDigest } from './vendor/diff-digest.js';
 import { classifyRecord } from './vendor/triviality.js';
@@ -36,58 +40,33 @@ import type { Commit, Region } from './types.js';
 /** Fewer scored commits than this and the region reports no coverage at all. */
 export const MIN_COMMITS_FOR_COVERAGE = 3;
 
-export class LeakageError extends Error {}
+export { LeakageError };
 
-/** Unified-diff syntax that must never appear in a scorer prompt. */
-const DIFF_SYNTAX = /^(diff --git |index [0-9a-f]{7,}|@@ -\d|\+\+\+ |--- )/m;
-
+/** The scorer must judge the record alone; the study's check is used verbatim. */
 function assertNoDiffInScorerPrompt(prompt: string): void {
-  if (DIFF_SYNTAX.test(prompt)) {
-    throw new LeakageError(
-      'A scorer prompt contained raw diff syntax. The scorer must judge the record alone; if it ' +
-        'can see the code it will score what the code says rather than what the author wrote.'
-    );
-  }
+  assertNoRawDiff(prompt, 'coverage/scorer-input');
 }
 
 /**
- * Containment: the generator's input must be DERIVED FROM THE DIFF and nothing else.
+ * Containment is delegated to the study's audited guard rather than reimplemented.
  *
- * ── A CORRECTION, AND IT IS THE STUDY'S CORRECTION MADE TWICE ─────────────────────────────
+ * THREE ATTEMPTS AT THIS FAILED BEFORE VENDORING IT. The first could not fire at all — it
+ * filtered short words out of the message and searched for a shingle absent even from the
+ * message it came from. The second fired on "when enabled, objects are uploaded without an acl",
+ * a commit that added a doc comment saying what its message says, which is shared content and
+ * not a leak. The third fired on `diffDigest`'s own synthetic header, which by construction is
+ * not in the diff.
  *
- * The first version of this guard was inert — it filtered short words out of the message and
- * searched for a shingle absent even from the message it came from. Repairing it to compare the
- * generator input against the commit message made it fire on the first real run, on the phrase
- * "when enabled, objects are uploaded without an acl". That is NOT a leak. It is a commit that
- * added a doc comment saying the same thing its message says, so the prose is genuinely in the
- * diff, and the digest is built from the diff.
+ * The study hit all three walls first and its guard already handles them: it strips digest
+ * markers, and it scopes shingles to a single line because the digest drops context lines, so a
+ * shingler crossing newlines manufactures sequences absent from the source and the assertion
+ * fails on every large change.
  *
- * Which is the whole point: an overlap check between the generator input and the record CANNOT
- * DETECT WHAT IT CLAIMS TO. The digest is constructed from `diff.patch`; every token in it
- * already came from the diff, so overlap with the commit message can only ever mean the two
- * genuinely share content. The study hit this exact wall, retracted the check, and replaced it
- * with a containment assertion. This is that replacement, arrived at the same way — by the
- * check firing on a case that was not a leak.
- *
- * So the assertion is structural: every non-trivial line of the generator input must appear in
- * the diff it was digested from. A leak — record prose spliced into the prompt — introduces a
- * line the diff does not contain, and that is detectable. Shared content is not.
+ * THE INVARIANT WAS VERIFIED TO STILL APPLY HERE BEFORE ADOPTING IT, rather than assumed:
+ * `git show --format=` emits zero occurrences of the commit subject, so generation in this
+ * pipeline is diff-only exactly as it is in the study. The guard was never reporting that the
+ * two contexts differ.
  */
-function assertDerivedFromDiff(digest: string, diff: string): void {
-  const haystack = diff.replace(/\s+/g, ' ');
-  for (const raw of digest.split('\n')) {
-    const line = raw.replace(/^[+\-\s]+/, '').trim();
-    // Short lines and structural scaffolding collide by chance; only substantive prose or code
-    // carries enough information for the test to mean anything.
-    if (line.length < 24) continue;
-    if (!haystack.includes(line.replace(/\s+/g, ' '))) {
-      throw new LeakageError(
-        `A question-generation input contained a line absent from the diff it was digested ` +
-          `from: "${line.slice(0, 90)}". Questions must be derived from the diff alone.`
-      );
-    }
-  }
-}
 
 const SCORER_SYSTEM =
   'You judge whether a written record answers a specific question about a code change. ' +
@@ -152,6 +131,7 @@ export async function computeCoverage(
   regionsOf: Map<string, Commit[]>,
   opts: CoverageOpts
 ): Promise<CoverageResult> {
+  const guardDir = join(tmpdir(), `riskmap-guard-${process.pid}`);
   const coverage = new Map<string, number>();
   const scored = new Map<string, number>();
   let questionsAsked = 0;
@@ -190,8 +170,12 @@ export async function computeCoverage(
       // Guard the INPUT. The earlier version only inspected decompose's OUTPUT, after the call
       // had already been made — so a leak into the generator prompt was unobservable by the
       // thing whose error message claimed to be checking exactly that.
+      // The vendored assertion reads the diff from a directory, so the commit's diff is staged
+      // where it can find it. Cheap next to the model call it guards.
       const digest = diffDigest(diff);
-      assertDerivedFromDiff(digest, diff);
+      mkdirSync(guardDir, { recursive: true });
+      writeFileSync(join(guardDir, 'diff.patch'), diff);
+      assertDerivedFromDiff(guardDir, digest, `coverage/${c.sha.slice(0, 8)}`);
 
       let questions: { question: string }[];
       try {
@@ -223,6 +207,7 @@ export async function computeCoverage(
     );
   }
 
+  rmSync(guardDir, { recursive: true, force: true });
   return { coverage, scored, questionsAsked };
 }
 

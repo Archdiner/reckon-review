@@ -800,10 +800,21 @@ export function formatSweepReport(s: SweepSummary): string {
   L.push('## Method');
   L.push('');
   L.push(`- Repo list: \`${s.reposFile}\`. Clones: \`${s.clonesDir}\`.`);
+  // The relationship between the clone depth and the measurement window is not asserted, it is
+  // reported. An earlier draft of this line claimed the clone was the shorter of the two, which
+  // was true of the default window on the day it was written and stopped being true when the
+  // default changed — a stated number that quietly becomes wrong is worse than no line at all.
+  const windows = [...new Set(s.prospects.map((p) => p.windowMonths))].sort((a, b) => a - b);
+  const spans = s.prospects.map((p) => p.spanMonths);
   L.push(
-    `- Clones are shallow, \`--shallow-since="${s.cloneWindow}"\`, so a sweep measures over less ` +
-      'history than a full `map` run of the same repository would. Sweep is triage; re-clone ' +
-      'deeper before sending anything.'
+    `- Clones are shallow, \`--shallow-since="${s.cloneWindow}"\`` +
+      (windows.length > 0
+        ? `; the maps were measured over a ${windows.join('/')}-month window and actually observed ` +
+          `${Math.min(...spans).toFixed(1)}-${Math.max(...spans).toFixed(1)} months of history. ` +
+          'Whichever of the two binds, a sweep can see less history than a deeper clone of the ' +
+          'same repository would, and orphaning is the dimension that suffers most from a short ' +
+          'view. Sweep is triage; re-clone deeper before sending anything.'
+        : '.')
   );
   L.push(
     '- Record coverage is off. It needs a model call per commit sampled, and the point of a sweep ' +

@@ -26,6 +26,7 @@ const PAIRS: [copy: string, original: string][] = [
   [join(HERE, 'vendor', 'triviality.ts'), join(STUDY, 'src', 'triviality.ts')],
   [join(HERE, 'vendor', 'backends.ts'), join(STUDY, 'src', 'backends.ts')],
   [join(HERE, 'vendor', 'diff-digest.ts'), join(STUDY, 'src', 'vendor', 'diff-digest.ts')],
+  [join(HERE, 'vendor', 'guard.ts'), join(STUDY, 'src', 'guard.ts')],
   [join(ROOT, 'vendor', 'reckon-core-0.5.0.tgz'), join(STUDY, 'vendor', 'reckon-core-0.5.0.tgz')],
 ];
 
