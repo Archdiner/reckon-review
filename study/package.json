@@ -7,7 +7,7 @@
   "scripts": {
     "study": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/vendor.test.ts && tsx src/guard.test.ts"
+    "test": "tsx src/vendor.test.ts && tsx src/guard.test.ts && tsx src/triviality.test.ts"
   },
   "dependencies": {
     "@reckon/core": "file:vendor/reckon-core-0.5.0.tgz"

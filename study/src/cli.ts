@@ -25,7 +25,9 @@ import { REPOS, REJECTED_REPOS } from './corpus.js';
 import { collect } from './stage1_collect.js';
 import { generateQuestions, countQuestions } from './stage2_questions.js';
 import { generateSynthetic } from './stage3_synthetic.js';
+import { generateParaphrase } from './stage3b_paraphrase.js';
 import { scoreCorpus, type ScoreMode } from './stage4_score.js';
+import { scoreThreeArms } from './stage4b_score3.js';
 import { analyze, writeCsvs, formatReport } from './stage6_analyze.js';
 import { exportWorksheet, compareLabels } from './handlabel.js';
 import { describeCorpus } from './describe.js';
@@ -101,6 +103,32 @@ async function cmdSynthetic() {
   const rep = await generateSynthetic(PRS, backend, label, CONCURRENCY, flag('force'));
   console.log(`  written ${rep.written}, skipped ${rep.skipped}, failed ${rep.failed.length}`);
   if (mock) console.log('  NOTE: mock backend — descriptions are placeholders, not findings.');
+}
+
+/**
+ * Stage 3b — the form control. Rewrites the real record in the model's own voice, adding
+ * nothing, so the three-arm comparison can separate "the record lacks the information" from
+ * "the record is not phrased the way a model-generated question expects".
+ */
+async function cmdParaphrase() {
+  const { backend, label, mock } = backendFor('generation');
+  console.log(`Paraphrasing real records with ${label} (form control, adds no information)…`);
+  const rep = await generateParaphrase(PRS, backend, label, CONCURRENCY, flag('force'));
+  console.log(`  written ${rep.written}, skipped ${rep.skipped}, failed ${rep.failed.length}`);
+  if (mock) console.log('  NOTE: mock backend — paraphrases are placeholders, not findings.');
+}
+
+/**
+ * Stage 4b — score real, synthetic and paraphrase independently. Independent scoring is not
+ * optional here: the three arms only compare if they are judged identically, and scoring each
+ * alone also removes the contrast effect the pilot measured.
+ */
+async function cmdScore3() {
+  const { backend, label, mock } = backendFor('scoring');
+  console.log(`Scoring three arms independently with ${label} (real / synthetic / paraphrase)…`);
+  const rep = await scoreThreeArms(PRS, backend, label, CONCURRENCY, flag('force'));
+  console.log(`  written ${rep.written}, skipped ${rep.skipped}, PRs failed ${rep.failed.length}, questions failed ${rep.failedQuestions}`);
+  if (mock) console.log('  NOTE: mock backend — scores are hash values, not judgements.');
 }
 
 async function cmdScore() {
@@ -247,7 +275,9 @@ const COMMANDS: Record<string, () => void | Promise<void>> = {
   publish: cmdPublish,
   questions: cmdQuestions,
   synthetic: cmdSynthetic,
+  paraphrase: cmdParaphrase,
   score: cmdScore,
+  score3: cmdScore3,
   analyze: cmdAnalyze,
   'handlabel-export': cmdHandlabelExport,
   'handlabel-compare': cmdHandlabelCompare,
@@ -263,7 +293,9 @@ async function main() {
     console.log('  describe                  corpus composition and matching feasibility (no model calls)');
     console.log('  questions                 stage 2: mechanism questions from the diff alone (--force)');
     console.log('  synthetic                 stage 3: synthetic PR description from the diff alone (--force)');
+    console.log('  paraphrase                stage 3b: real record restated in model voice, no new info (--force)');
     console.log('  score                     stage 4: blinded scoring (--score-mode paired|independent, --force)');
+    console.log('  score3                    stage 4b: real/synthetic/paraphrase scored independently (--force)');
     console.log('  analyze                   stage 6: stats, CSVs and report');
     console.log('  handlabel-export          export the 50-PR validation worksheet (--n N)');
     console.log('  handlabel-compare         agreement between hand labels and the model');
@@ -274,7 +306,7 @@ async function main() {
     console.log('  STUDY_ROOT, STUDY_CLONES, STUDY_CONCURRENCY');
     process.exit(1);
   }
-  if (['questions', 'synthetic', 'score'].includes(cmd)) {
+  if (['questions', 'synthetic', 'paraphrase', 'score', 'score3'].includes(cmd)) {
     const warn = selfJudgementWarning();
     if (warn) console.warn(`\nWARNING: ${warn}\n`);
   }
