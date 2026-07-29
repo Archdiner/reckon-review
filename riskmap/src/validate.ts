@@ -1228,7 +1228,13 @@ export function formatValidationReport(r: ValidationResult): string {
   const g = d.goneBeforeT;
   const e = d.extant;
   if (g.total > 0) {
-    L.push('### 1a. Sensitivity: most of the flagged arm was already gone at T');
+    // The heading must not assert a share the data does not show. An earlier draft hardcoded
+    // "most of the flagged arm", which would have been a false claim on any run where it was a
+    // handful of regions — exactly the kind of sentence this report exists to not print.
+    const goneShare = d.flaggedTotal ? g.flagged / d.flaggedTotal : 0;
+    const qualifier =
+      goneShare > 0.5 ? 'most of the flagged arm was' : `${g.flagged} of the flagged regions were`;
+    L.push(`### 1a. Sensitivity: ${qualifier} already gone at T`);
     L.push('');
     L.push(
       `**${g.flagged} of the ${d.flaggedTotal} flagged regions had no files left in the tree at T** ` +
