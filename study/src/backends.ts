@@ -177,25 +177,73 @@ export type BackendRole = 'generation' | 'scoring';
  * Anthropic and scoring prefers OpenAI, so the two roles land on different vendors by
  * default; either can be overridden.
  */
+/**
+ * Per-vendor defaults. Generation gets the stronger model, scoring the cheaper one, which is
+ * the protocol's instruction and also the right way round: writing a synthetic description is
+ * the hard task, judging whether a text answers a question is the easy one.
+ *
+ * These are defaults, not assertions about what your account can reach. Override with
+ * STUDY_GEN_MODEL / STUDY_SCORE_MODEL if a name here is not available to you.
+ */
+const DEFAULTS = {
+  anthropic: { generation: 'claude-sonnet-5', scoring: 'claude-haiku-4-5-20251001' },
+  openai: { generation: 'gpt-5.4', scoring: 'gpt-5.4-mini' },
+} as const;
+
 export function backendFor(role: BackendRole): { backend: LlmBackend; label: string; mock: boolean } {
   if (process.env.STUDY_MOCK === '1') return { backend: new MockBackend(), label: 'mock', mock: true };
 
   const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  const override = role === 'generation' ? process.env.STUDY_GEN_MODEL : process.env.STUDY_SCORE_MODEL;
 
-  const genModel = process.env.STUDY_GEN_MODEL || 'claude-sonnet-5';
-  const scoreModel = process.env.STUDY_SCORE_MODEL || 'gpt-5.4-mini';
+  // Vendor preference is split by role so that, when BOTH keys are present, generation and
+  // scoring land on different vendors. That is the "don't self-judge" property Reckon's own
+  // grader is built around: if the same model writes the synthetic description and then
+  // scores it, self-preference can quietly inflate the synthetic arm and shrink the very gap
+  // this study exists to measure.
+  const order: ('anthropic' | 'openai')[] = role === 'generation' ? ['anthropic', 'openai'] : ['openai', 'anthropic'];
 
-  if (role === 'generation') {
-    if (anthropicKey) return { backend: new AnthropicBackend(anthropicKey, genModel), label: `anthropic:${genModel}`, mock: false };
-    if (openaiKey) return { backend: new OpenAiBackend(openaiKey, scoreModel), label: `openai:${scoreModel}`, mock: false };
-  } else {
-    if (openaiKey) return { backend: new OpenAiBackend(openaiKey, scoreModel), label: `openai:${scoreModel}`, mock: false };
-    if (anthropicKey) return { backend: new AnthropicBackend(anthropicKey, genModel), label: `anthropic:${genModel}`, mock: false };
+  for (const vendor of order) {
+    if (vendor === 'anthropic' && anthropicKey) {
+      const model = override || DEFAULTS.anthropic[role];
+      return { backend: new AnthropicBackend(anthropicKey, model), label: `anthropic:${model}`, mock: false };
+    }
+    if (vendor === 'openai' && openaiKey) {
+      const model = override || DEFAULTS.openai[role];
+      return { backend: new OpenAiBackend(openaiKey, model), label: `openai:${model}`, mock: false };
+    }
   }
 
   throw new Error(
     'No model credentials found. Set ANTHROPIC_API_KEY and/or OPENAI_API_KEY, ' +
       'or run with STUDY_MOCK=1 to exercise the pipeline offline.'
+  );
+}
+
+/**
+ * Warn when generation and scoring resolve to the same model.
+ *
+ * With only one vendor's key available both roles fall to that vendor, and if the model names
+ * also coincide the scorer is judging its own output. The run is still worth doing — the
+ * study is not void — but the synthetic arm may be flattered, so the direction of the bias
+ * has to be stated rather than discovered by a reviewer.
+ */
+export function selfJudgementWarning(): string | null {
+  if (process.env.STUDY_MOCK === '1') return null;
+  let gen: string;
+  let score: string;
+  try {
+    gen = backendFor('generation').label;
+    score = backendFor('scoring').label;
+  } catch {
+    return null;
+  }
+  if (gen !== score) return null;
+  return (
+    `Generation and scoring both resolve to ${gen}. The scorer will be judging text written ` +
+    'by the same model, so self-preference can inflate the synthetic arm and understate the ' +
+    'real-minus-synthetic gap. The run is still valid, but say so in the writeup, and prefer ' +
+    'STUDY_GEN_MODEL / STUDY_SCORE_MODEL set to two different models.'
   );
 }

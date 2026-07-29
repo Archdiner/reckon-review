@@ -42,14 +42,45 @@ knowing now because they change what can be claimed later.
 - **342 matched pairs** are available within repo, so question C has adequate power even
   though its label is weak.
 
-To produce actual numbers, set a key and run stages 2-4:
+To produce actual numbers, set a key and run stages 2-4. **This works on any machine with
+outbound access to the vendor** — the corpus is rebuilt deterministically, so it does not have
+to be the machine that collected it:
 
 ```bash
-export ANTHROPIC_API_KEY=...      # generation (stages 2, 3)
-export OPENAI_API_KEY=...         # scoring (stage 4), a cheaper model on a different vendor
+git clone <this repo> && cd study && npm install
+npm run study -- clone && npm run study -- collect   # ~30 min, rebuilds the same 1000 PRs
+
+export OPENAI_API_KEY=...         # or ANTHROPIC_API_KEY, or both
 npm run study -- questions && npm run study -- synthetic && npm run study -- score
-npm run study -- analyze
+npm run study -- analyze && npm run study -- publish
 ```
+
+### Which models get used
+
+Generation (stages 2, 3) takes the stronger model; scoring (stage 4) takes the cheaper one.
+That is the protocol's instruction and the right way round — writing a description is the hard
+task, judging whether a text answers a question is the easy one.
+
+| Keys present | Generation | Scoring |
+| --- | --- | --- |
+| Both | `claude-sonnet-5` | `gpt-5.4-mini` |
+| OpenAI only | `gpt-5.4` | `gpt-5.4-mini` |
+| Anthropic only | `claude-sonnet-5` | `claude-haiku-4-5-20251001` |
+
+Override either with `STUDY_GEN_MODEL` / `STUDY_SCORE_MODEL` if a name is not available on
+your account.
+
+With both keys the two roles land on **different vendors**, which buys the property Reckon's
+own grader is built around: a model does not judge its own output. With one vendor they land
+on different models of the same family, which is weaker but still not self-judgement. If you
+force both roles onto the *same* model the CLI prints a warning before running — the study is
+still valid, but self-preference can flatter the synthetic arm and understate the very gap
+being measured, so it has to be declared in the writeup.
+
+Note on this environment specifically: `api.anthropic.com` is reachable but `api.openai.com`
+is refused by the egress policy (403 on CONNECT), so an OpenAI key alone cannot drive the run
+from inside this session. Run stages 2-4 locally, or from anywhere with outbound access to
+your vendor.
 
 Two further environment limits shaped the design and must be carried into any writeup:
 

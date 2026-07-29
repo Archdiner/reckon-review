@@ -29,7 +29,7 @@ import { scoreCorpus, type ScoreMode } from './stage4_score.js';
 import { analyze, writeCsvs, formatReport } from './stage6_analyze.js';
 import { exportWorksheet, compareLabels } from './handlabel.js';
 import { describeCorpus } from './describe.js';
-import { backendFor } from './backends.js';
+import { backendFor, selfJudgementWarning } from './backends.js';
 import { LeakageError } from './guard.js';
 
 const exec = promisify(execFile);
@@ -273,6 +273,10 @@ async function main() {
     console.log('  STUDY_MOCK=1                         run offline with the deterministic backend');
     console.log('  STUDY_ROOT, STUDY_CLONES, STUDY_CONCURRENCY');
     process.exit(1);
+  }
+  if (['questions', 'synthetic', 'score'].includes(cmd)) {
+    const warn = selfJudgementWarning();
+    if (warn) console.warn(`\nWARNING: ${warn}\n`);
   }
   try {
     await COMMANDS[cmd]();
