@@ -60,23 +60,40 @@ disagreeing reader with nothing to point at.
 
 ## The dimensions
 
-Computed over a trailing 60-month window (see below), keyed off HEAD's author date rather than wall clock
+Computed over a trailing 24-month window, keyed off HEAD's author date rather than wall clock
 so the same clone yields the same map.
 
 | Dimension | What it is |
 | --- | --- |
-| **Orphaned share** | Share of the region's commits made by contributors with no commit *anywhere in the repository* in 12 months. The headline. |
+| **Departed share** | Of the files here now, the share whose most recent change came from a *departed* contributor: no commit anywhere in the repo in 12 months **and** a substantial prior footprint (≥5 commits spanning ≥90 days). The headline. |
 | **Concentration** | Share from the single largest contributor. With orphaned share, this is the bus-factor cell. |
 | **Churn** | Commits and lines per month. A region nobody touches is lower risk than a hot one with the same ownership profile. |
 | **Record coverage** | Share of mechanism questions about a change that the commit records actually answer, scored with the production question generator. Opt-in. |
 | **Agent density** | Share of commits carrying an agent `Co-authored-by` trailer. Context, not quality. |
 | **Last explanation** | The most recent commit whose message says anything beyond its own subject. |
 
-A region is listed when it clears at least **two of the available tests, one of which must be an
-ownership test** (orphaned or concentrated). The thresholds are printed in the output, because a
-reader who disagrees with them should be able to see what they were — and arguing about where
-the line sits is a conversation about their codebase, which is the conversation this exists to
-start.
+**Two named findings, kept separate.** A region is **departed** when it is still moving, still
+exists in the tree, and ≥50% of its files were last changed by a departed contributor. It is
+**concentrated** when it is still moving, still exists, and ≥50% of its changes came from one
+person. Liveness and existence are preconditions for both — a deleted directory has nothing left
+to understand, and dead code is not a risk anyone needs to act on.
+
+They are different conversations. Bus factor is chronic and every engineering leader can already
+name theirs; departure is acute, dated, and usually has an incident attached. Blending them lets
+the artifact overclaim: grafana's only flagged region has a departed share of **zero** and is
+flagged purely on concentration.
+
+**How often each fires, measured on four repositories** — the number that sizes any outreach or
+validation plan:
+
+| finding | per repo | repos needed for 30 such regions |
+| --- | --- | --- |
+| concentrated | 1.75 | ~18 |
+| departed | **0.25** | **~120** |
+
+Hit rate is 2 of 4 repos, so roughly 20 repositories scanned per 10 sendable artifacts — but
+nearly all of those are concentration findings. n=4 repos, and the departed rate rests on a
+single observed region, so treat both as order-of-magnitude.
 
 ### Three rules the spec got wrong, found by running it
 
@@ -92,11 +109,12 @@ means something completely different on a repo with 200 commits a year and one w
 grafana it marked four fifths of the codebase hot. The operative threshold is the **median region
 churn of the repository being mapped**, computed at run time and printed in the output.
 
-**A 24-month window cannot see the thing being measured.** Orphaning is multi-year: a two-year
-window can only ever contain two years of contributors, nearly all still active. Measured both
-ways on grafana — at 24 months the maximum orphaned share across 44 regions is **0.14** and the
-median 0.035, so nothing can flag; at 84 months the maximum is **0.88**. The default is now 60
-months.
+**A commit-SHARE orphan measure cannot express the target at any window.** Recent commits by
+active people sit in the same denominator, so activity dilutes orphaning and the two are
+anti-correlated by construction: the busy-and-orphaned cell was empty on grafana at 24, 36 and 60
+months, and with the orphan and churn windows decoupled. The headline is now **last-touch file
+share** — of the files here now, how many were last written by someone gone — which a live region
+can score high on. With that measure 24 months is sufficient and the window is back to 24.
 
 ## Calibration, and a correction to the spec
 
