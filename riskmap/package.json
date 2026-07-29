@@ -7,7 +7,7 @@
   "scripts": {
     "riskmap": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/identity.test.ts && tsx src/regions.test.ts && tsx src/gitlog.test.ts && tsx src/dimensions.test.ts && tsx src/vendor.test.ts"
+    "test": "tsx src/identity.test.ts && tsx src/regions.test.ts && tsx src/gitlog.test.ts && tsx src/dimensions.test.ts && tsx src/recordmap.test.ts && tsx src/vendor.test.ts"
   },
   "dependencies": {
     "@reckon/core": "file:vendor/reckon-core-0.5.0.tgz"

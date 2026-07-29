@@ -110,10 +110,31 @@ export interface CoverageOpts {
   onProgress?: (msg: string) => void;
 }
 
+/**
+ * Per-region coverage, WITH THE COUNTS THE ESTIMATE RESTS ON.
+ *
+ * The rate alone is not enough for a heatmap. Every coloured cell is an estimate from a handful
+ * of sampled commits, and a table makes that visible while a heatmap does not — a region scored
+ * off three commits gets the same confident block of colour as one scored off fifty. So the
+ * numerator and denominator travel with the rate, and the renderer greys anything too thin
+ * instead of colouring it.
+ */
+export interface RegionCoverage {
+  /** Questions answered explicitly (rubric score 2). */
+  explicit: number;
+  /** Questions asked. The denominator for the interval. */
+  total: number;
+  /** Commits that actually produced questions. */
+  commits: number;
+  rate: number;
+}
+
 export interface CoverageResult {
   /** Region path → mean explicit rate in [0,1]. */
   coverage: Map<string, number>;
   scored: Map<string, number>;
+  /** Region path → the full estimate with its counts. */
+  detail: Map<string, RegionCoverage>;
   questionsAsked: number;
 }
 
@@ -134,6 +155,7 @@ export async function computeCoverage(
   const guardDir = join(tmpdir(), `riskmap-guard-${process.pid}`);
   const coverage = new Map<string, number>();
   const scored = new Map<string, number>();
+  const detail = new Map<string, RegionCoverage>();
   let questionsAsked = 0;
 
   for (const [region, commits] of regionsOf) {
@@ -202,13 +224,14 @@ export async function computeCoverage(
     }
     coverage.set(region, explicit / total);
     scored.set(region, usedCommits);
+    detail.set(region, { explicit, total, commits: usedCommits, rate: explicit / total });
     opts.onProgress?.(
       `${region}: ${(100 * explicit / total).toFixed(1)}% explicit over ${total} questions from ${usedCommits} commits`
     );
   }
 
   rmSync(guardDir, { recursive: true, force: true });
-  return { coverage, scored, questionsAsked };
+  return { coverage, scored, detail, questionsAsked };
 }
 
 /** Attach coverage and its percentile to the regions. */
