@@ -1,13 +1,22 @@
 {
-  "publishedAtUtc": "2026-07-29T13:18:47.024Z",
-  "commit": "1a9e2721c15a81a2cb3ebe9b1b6c1576d80b18db",
-  "scored": false,
-  "prsScored": 0,
-  "questionsScored": 0,
-  "generationModel": null,
-  "scoringModel": null,
+  "publishedAtUtc": "2026-07-29T14:22:19.907Z",
+  "commit": "fd18ce913a9c00389c524b7e4938224d36b1f7a3",
+  "scored": true,
+  "prsScored": 1000,
+  "questionsScored": 3181,
+  "generationModel": "openai:gpt-5.4",
+  "scoringModel": "openai:gpt-5.4-mini",
+  "threeArmScored": 1000,
   "artifacts": [
     "collect-report.json",
-    "corpus-summary.md"
+    "corpus-summary.md",
+    "report.md",
+    "analysis.json",
+    "per-pr-scores.csv",
+    "per-question-scores.csv",
+    "three-arm-report.md",
+    "three-arm-scores.csv",
+    "size-decomposition.md",
+    "record-vs-synthetic.svg"
   ]
 }

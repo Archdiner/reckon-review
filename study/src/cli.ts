@@ -30,11 +30,14 @@ import { scoreCorpus, type ScoreMode } from './stage4_score.js';
 import { scoreThreeArms } from './stage4b_score3.js';
 import { loadThreeArm, formatThreeArmReport, writeThreeArmCsv } from './analyze3.js';
 import { decomposeBySize } from './decompose_size.js';
+import { exportQuestionWorksheet, scoreAgainstHumanQuestions } from './humanquestions.js';
+import { buildChart } from './chart.js';
 import { analyze, writeCsvs, formatReport } from './stage6_analyze.js';
 import { exportWorksheet, compareLabels } from './handlabel.js';
 import { describeCorpus } from './describe.js';
 import { backendFor, selfJudgementWarning } from './backends.js';
 import { LeakageError } from './guard.js';
+import { prDirs, readJson } from './io.js';
 
 const exec = promisify(execFile);
 
@@ -160,6 +163,66 @@ function cmdAnalyze3() {
   console.log(`\nWrote ${join(OUT, 'three-arm-report.md')}, three-arm-scores.csv`);
 }
 
+/**
+ * Export the human-question worksheet. There is no command that FILLS it: a model writing
+ * these questions belongs to the same class of generator as the one under test and would
+ * reproduce the framing bias the control exists to detect.
+ */
+function cmdExportQuestions() {
+  const n = Number(arg('n', '35'));
+  const dir = join(OUT, 'human-questions');
+  const r = exportQuestionWorksheet(PRS, dir, n, 'humanq-v1');
+  console.log(`Exported ${r.prs} PRs to ${dir}`);
+  console.log(`  by record tier: ${JSON.stringify(r.byTier)}`);
+  console.log('  Fill the `questions` array in human-questions.jsonl BY HAND, reading only the diff.');
+  console.log('  Then run: study score-human-questions');
+}
+
+async function cmdScoreHumanQuestions() {
+  const { backend, label } = backendFor('scoring');
+  const path = arg('worksheet', join(OUT, 'human-questions', 'human-questions.jsonl'))!;
+  console.log(`Scoring arms against hand-written questions with ${label}…`);
+  const r = await scoreAgainstHumanQuestions(PRS, path, backend, CONCURRENCY);
+  if (!r) {
+    console.log('No filled questions found. Run `study export-questions` and fill the worksheet first.');
+    return;
+  }
+  const f2 = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : 'n/a');
+  const f1 = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : 'n/a');
+  const lines = [
+    '# Human-written questions — control result',
+    '',
+    `PRs with hand-written questions: **${r.prs}** (skipped ${r.skipped}), questions: **${r.questions}**`,
+    '',
+    `| arm | mean | explicit % |`,
+    `| --- | --- | --- |`,
+    `| real record | ${f2(r.realMean)} | ${f1(r.realExplicitPct)} |`,
+    `| paraphrased record | ${f2(r.paraphraseMean)} | — |`,
+    `| synthetic (from diff) | ${f2(r.syntheticMean)} | ${f1(r.syntheticExplicitPct)} |`,
+    '',
+    `Per-PR mean gap (real - synthetic): **${f2(r.gap)}**`,
+    '',
+    'If this gap has the same sign and rough size as the one measured on generated questions,',
+    'the "diff-derived questions over-weight what is locally visible" objection does not',
+    'explain the result: a human deciding what matters weighted it differently and got the',
+    'same answer.',
+    '',
+  ];
+  const text = lines.join('\n');
+  mkdirSync(OUT, { recursive: true });
+  writeFileSync(join(OUT, 'human-questions-result.md'), `${text}\n`);
+  console.log(text);
+}
+
+/** The chart: four bars, three segments, the whole result in one picture. */
+function cmdChart() {
+  mkdirSync(OUT, { recursive: true });
+  const svg = buildChart(PRS);
+  const path = join(OUT, 'record-vs-synthetic.svg');
+  writeFileSync(path, `${svg}\n`);
+  console.log(`Wrote ${path}`);
+}
+
 /** Decomposition of the agent/human contrast, holding diff size fixed. */
 function cmdDecompose() {
   mkdirSync(OUT, { recursive: true });
@@ -236,6 +299,24 @@ function cmdHandlabelCompare() {
  * containing them would be indistinguishable from real findings a month later — which is
  * exactly the confusion the rest of this pipeline exists to prevent.
  */
+/**
+ * Which models actually ran, recovered from the artifacts they wrote.
+ *
+ * questions.json records the generation model, blind.json the scoring model, scores3.json the
+ * three-arm scorer. Sampling a handful of PRs is enough: a run uses one model per role.
+ */
+function observedModels(root: string): { generation: string | null; scoring: string | null; threeArm: number } {
+  let generation: string | null = null;
+  let scoring: string | null = null;
+  let threeArm = 0;
+  for (const d of prDirs(root)) {
+    if (!generation) generation = readJson<{ model: string }>(d, 'questions.json')?.model ?? null;
+    if (!scoring) scoring = readJson<{ model: string }>(d, 'blind.json')?.model ?? null;
+    if (existsSync(join(d, 'scores3.json'))) threeArm++;
+  }
+  return { generation, scoring, threeArm };
+}
+
 async function cmdPublish() {
   const RESULTS = join(process.cwd(), 'results');
   mkdirSync(RESULTS, { recursive: true });
@@ -262,6 +343,8 @@ async function cmdPublish() {
   const artifacts = [
     'collect-report.json', 'corpus-summary.md', 'report.md', 'analysis.json',
     'per-pr-scores.csv', 'per-question-scores.csv', 'human-validation.md',
+    'three-arm-report.md', 'three-arm-scores.csv', 'size-decomposition.md',
+    'record-vs-synthetic.svg', 'human-questions-result.md',
   ];
   const copied: string[] = [];
   for (const f of artifacts) {
@@ -271,14 +354,20 @@ async function cmdPublish() {
     copied.push(f);
   }
 
+  // Read the models actually used out of the run artifacts. Reading the override env vars
+  // instead recorded nothing whenever the defaults were taken, which is the common case, and
+  // left the manifest saying "see blind.json" — a manifest that cannot answer "which model
+  // produced this" is not doing its job.
+  const observed = observedModels(PRS);
   const manifest = {
     publishedAtUtc: new Date().toISOString(),
     commit,
     scored: analysis !== null,
     prsScored: analysis?.n ?? 0,
     questionsScored: analysis?.nQuestions ?? 0,
-    generationModel: process.env.STUDY_GEN_MODEL || (analysis ? 'see blind.json' : null),
-    scoringModel: process.env.STUDY_SCORE_MODEL || (analysis ? 'see blind.json' : null),
+    generationModel: observed.generation ?? process.env.STUDY_GEN_MODEL ?? null,
+    scoringModel: observed.scoring ?? process.env.STUDY_SCORE_MODEL ?? null,
+    threeArmScored: observed.threeArm,
     artifacts: copied,
   };
   writeFileSync(join(RESULTS, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -308,6 +397,9 @@ const COMMANDS: Record<string, () => void | Promise<void>> = {
   score3: cmdScore3,
   analyze3: cmdAnalyze3,
   decompose: cmdDecompose,
+  chart: cmdChart,
+  'export-questions': cmdExportQuestions,
+  'score-human-questions': cmdScoreHumanQuestions,
   analyze: cmdAnalyze,
   'handlabel-export': cmdHandlabelExport,
   'handlabel-compare': cmdHandlabelCompare,
@@ -329,6 +421,9 @@ async function main() {
     console.log('  analyze                   stage 6: stats, CSVs and report');
     console.log('  analyze3                  stage 6b: three-arm report — is the gap content or form?');
     console.log('  decompose                 agent/human contrast with diff size held fixed');
+    console.log('  chart                     stacked-bar SVG of the score distribution by arm');
+    console.log('  export-questions          export the hand-written question worksheet (--n N)');
+    console.log('  score-human-questions     score the arms against hand-written questions');
     console.log('  handlabel-export          export the 50-PR validation worksheet (--n N)');
     console.log('  handlabel-compare         agreement between hand labels and the model');
     console.log('  publish                   copy publishable artifacts into results/ (refuses on mock runs)');

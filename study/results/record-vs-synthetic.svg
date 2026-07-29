@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 472" width="860" height="472" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+<rect width="860" height="472" fill="#ffffff"/>
+<text x="24" y="38" font-size="19" font-weight="700" fill="#1c1917">Can the written record answer questions about the change?</text>
+<text x="24" y="62" font-size="13.5" fill="#57534e">Share of mechanism questions answered, by what the reader is given. 1,000 merged PRs, 3,182 questions.</text>
+<text x="24" y="81" font-size="13.5" fill="#57534e">Questions generated from the diff alone; each text scored on its own, blind to source.</text>
+<rect x="24" y="88" width="12" height="12" rx="2" fill="#c2410c"/>
+<text x="42" y="99" font-size="12" fill="#44403c">0 — nothing in the text bears on it</text>
+<rect x="297" y="88" width="12" height="12" rx="2" fill="#a8a29e"/>
+<text x="315" y="99" font-size="12" fill="#44403c">1 — gestures at it</text>
+<rect x="457.8" y="88" width="12" height="12" rx="2" fill="#0f766e"/>
+<text x="475.8" y="99" font-size="12" fill="#44403c">2 — stated clearly enough to act on</text>
+<text x="24" y="138" font-size="14.5" font-weight="700" fill="#1c1917">Agent-attested</text>
+<text x="24" y="156" font-size="12.5" fill="#57534e">the record its author left</text>
+<rect x="250.0" y="118" width="164.9" height="46" fill="#c2410c"/>
+<text x="332.4" y="146" font-size="13.5" font-weight="700" fill="#ffffff" text-anchor="middle">30.5%</text>
+<rect x="414.9" y="118" width="96.9" height="46" fill="#a8a29e"/>
+<text x="463.3" y="146" font-size="13.5" font-weight="400" fill="#ffffff" text-anchor="middle">17.9%</text>
+<rect x="511.8" y="118" width="278.2" height="46" fill="#0f766e"/>
+<text x="650.9" y="146" font-size="13.5" font-weight="700" fill="#ffffff" text-anchor="middle">51.5%</text>
+<text x="24" y="205" font-size="12.5" fill="#57534e">a model, from the diff alone</text>
+<rect x="250.0" y="176" width="104.0" height="46" fill="#c2410c"/>
+<text x="302.0" y="204" font-size="13.5" font-weight="700" fill="#ffffff" text-anchor="middle">19.3%</text>
+<rect x="354.0" y="176" width="141.0" height="46" fill="#a8a29e"/>
+<text x="424.4" y="204" font-size="13.5" font-weight="400" fill="#ffffff" text-anchor="middle">26.1%</text>
+<rect x="494.9" y="176" width="295.1" height="46" fill="#0f766e"/>
+<text x="642.5" y="204" font-size="13.5" font-weight="700" fill="#ffffff" text-anchor="middle">54.6%</text>
+<text x="24" y="280" font-size="14.5" font-weight="700" fill="#1c1917">Human-authored</text>
+<text x="24" y="298" font-size="12.5" fill="#57534e">the record its author left</text>
+<rect x="250.0" y="260" width="372.2" height="46" fill="#c2410c"/>
+<text x="436.1" y="288" font-size="13.5" font-weight="700" fill="#ffffff" text-anchor="middle">68.9%</text>
+<rect x="622.2" y="260" width="100.7" height="46" fill="#a8a29e"/>
+<text x="672.5" y="288" font-size="13.5" font-weight="400" fill="#ffffff" text-anchor="middle">18.6%</text>
+<rect x="722.9" y="260" width="67.1" height="46" fill="#0f766e"/>
+<text x="756.4" y="288" font-size="13.5" font-weight="700" fill="#ffffff" text-anchor="middle">12.4%</text>
+<text x="24" y="347" font-size="12.5" fill="#57534e">a model, from the diff alone</text>
+<rect x="250.0" y="318" width="116.8" height="46" fill="#c2410c"/>
+<text x="308.4" y="346" font-size="13.5" font-weight="700" fill="#ffffff" text-anchor="middle">21.6%</text>
+<rect x="366.8" y="318" width="138.7" height="46" fill="#a8a29e"/>
+<text x="436.1" y="346" font-size="13.5" font-weight="400" fill="#ffffff" text-anchor="middle">25.7%</text>
+<rect x="505.4" y="318" width="284.6" height="46" fill="#0f766e"/>
+<text x="647.7" y="346" font-size="13.5" font-weight="700" fill="#ffffff" text-anchor="middle">52.7%</text>
+<text x="24" y="398" font-size="12.5" fill="#44403c"><tspan font-weight="700">Absence.</tspan> For 68.9% of questions, the human-authored record contains nothing at all.</text>
+<text x="24" y="418" font-size="12.5" fill="#44403c"><tspan font-weight="700">Reproducibility.</tspan> Where records are full, the two agent bars have nearly the same shape — a model matches them from the diff.</text>
+<text x="24" y="438" font-size="12.5" fill="#78716c">Even so, the best-documented cut leaves 30.5% of mechanism questions unanswered. This is not a story about lazy humans.</text>
+</svg>

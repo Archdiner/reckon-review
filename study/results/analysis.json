@@ -1,0 +1,633 @@
+{
+  "mock": false,
+  "n": 1000,
+  "nQuestions": 3181,
+  "overall": {
+    "realMean": 0.8657654825526564,
+    "realPctExplicit": 27.381326626846903,
+    "realPctAbsent": 40.804778371581264,
+    "syntheticMean": 1.4652624960704181,
+    "syntheticPctExplicit": 58.15781200880227
+  },
+  "gap": {
+    "mean": -0.6173333333333335,
+    "ci": [
+      -0.6664166666666663,
+      -0.5685000000000002
+    ],
+    "pctExplicitGap": -32.01666666666669,
+    "pctExplicitCi": [
+      -35.13333333333339,
+      -28.791666666666696
+    ]
+  },
+  "byProvenance": [
+    {
+      "arm": "agent",
+      "n": 500,
+      "realMean": 1.2281666666666655,
+      "realPctExplicit": 45.866666666666674
+    },
+    {
+      "arm": "human",
+      "n": 500,
+      "realMean": 0.49416666666666703,
+      "realPctExplicit": 8.433333333333334
+    }
+  ],
+  "matched": {
+    "pairs": 337,
+    "unmatched": {
+      "agent": 163,
+      "human": 163
+    },
+    "agentRealMean": 1.1879327398615234,
+    "humanRealMean": 0.507665677546983,
+    "diff": 0.6802670623145404,
+    "ci": [
+      0.597181008902077,
+      0.7636003956478739
+    ],
+    "strata": [
+      {
+        "key": "grafana/grafana|Go|150-499",
+        "agent": 49,
+        "human": 26,
+        "paired": 26
+      },
+      {
+        "key": "grafana/grafana|TypeScript|150-499",
+        "agent": 27,
+        "human": 26,
+        "paired": 26
+      },
+      {
+        "key": "grafana/grafana|TypeScript|500+",
+        "agent": 26,
+        "human": 24,
+        "paired": 24
+      },
+      {
+        "key": "grafana/grafana|Go|500+",
+        "agent": 31,
+        "human": 22,
+        "paired": 22
+      },
+      {
+        "key": "supabase/supabase|TypeScript|150-499",
+        "agent": 29,
+        "human": 20,
+        "paired": 20
+      },
+      {
+        "key": "apache/airflow|Python|50-149",
+        "agent": 19,
+        "human": 38,
+        "paired": 19
+      },
+      {
+        "key": "grafana/grafana|Go|20-49",
+        "agent": 21,
+        "human": 19,
+        "paired": 19
+      },
+      {
+        "key": "grafana/grafana|Go|50-149",
+        "agent": 30,
+        "human": 18,
+        "paired": 18
+      },
+      {
+        "key": "supabase/supabase|TypeScript|20-49",
+        "agent": 18,
+        "human": 19,
+        "paired": 18
+      },
+      {
+        "key": "supabase/supabase|TypeScript|500+",
+        "agent": 25,
+        "human": 18,
+        "paired": 18
+      },
+      {
+        "key": "grafana/grafana|TypeScript|50-149",
+        "agent": 17,
+        "human": 33,
+        "paired": 17
+      },
+      {
+        "key": "supabase/supabase|TypeScript|50-149",
+        "agent": 21,
+        "human": 17,
+        "paired": 17
+      },
+      {
+        "key": "apache/airflow|Python|150-499",
+        "agent": 14,
+        "human": 32,
+        "paired": 14
+      },
+      {
+        "key": "apache/airflow|Python|500+",
+        "agent": 17,
+        "human": 11,
+        "paired": 11
+      },
+      {
+        "key": "apache/airflow|Python|20-49",
+        "agent": 10,
+        "human": 33,
+        "paired": 10
+      },
+      {
+        "key": "grafana/grafana|TypeScript|20-49",
+        "agent": 8,
+        "human": 23,
+        "paired": 8
+      },
+      {
+        "key": "grafana/grafana|JSON|20-49",
+        "agent": 6,
+        "human": 9,
+        "paired": 6
+      },
+      {
+        "key": "langchain-ai/langchain|Python|20-49",
+        "agent": 6,
+        "human": 8,
+        "paired": 6
+      },
+      {
+        "key": "langchain-ai/langchain|Python|50-149",
+        "agent": 6,
+        "human": 13,
+        "paired": 6
+      },
+      {
+        "key": "grafana/grafana|JSON|50-149",
+        "agent": 5,
+        "human": 5,
+        "paired": 5
+      },
+      {
+        "key": "grafana/grafana|JSON|500+",
+        "agent": 4,
+        "human": 4,
+        "paired": 4
+      },
+      {
+        "key": "langchain-ai/langchain|Python|150-499",
+        "agent": 5,
+        "human": 4,
+        "paired": 4
+      },
+      {
+        "key": "apache/airflow|TypeScript|50-149",
+        "agent": 3,
+        "human": 4,
+        "paired": 3
+      },
+      {
+        "key": "apache/airflow|TypeScript|150-499",
+        "agent": 2,
+        "human": 6,
+        "paired": 2
+      },
+      {
+        "key": "langchain-ai/langchain|YAML|150-499",
+        "agent": 2,
+        "human": 2,
+        "paired": 2
+      },
+      {
+        "key": "apache/airflow|JSON|150-499",
+        "agent": 2,
+        "human": 1,
+        "paired": 1
+      },
+      {
+        "key": "apache/airflow|TOML|20-49",
+        "agent": 1,
+        "human": 1,
+        "paired": 1
+      },
+      {
+        "key": "grafana/grafana|JavaScript|500+",
+        "agent": 1,
+        "human": 1,
+        "paired": 1
+      },
+      {
+        "key": "grafana/grafana|JSON|150-499",
+        "agent": 1,
+        "human": 4,
+        "paired": 1
+      },
+      {
+        "key": "grafana/grafana|YAML|50-149",
+        "agent": 1,
+        "human": 3,
+        "paired": 1
+      },
+      {
+        "key": "grafana/grafana|YAML|500+",
+        "agent": 2,
+        "human": 1,
+        "paired": 1
+      },
+      {
+        "key": "langchain-ai/langchain|Python|500+",
+        "agent": 1,
+        "human": 7,
+        "paired": 1
+      },
+      {
+        "key": "langchain-ai/langchain|YAML|20-49",
+        "agent": 1,
+        "human": 1,
+        "paired": 1
+      },
+      {
+        "key": "prisma/prisma|JSON|500+",
+        "agent": 3,
+        "human": 1,
+        "paired": 1
+      },
+      {
+        "key": "prisma/prisma|TypeScript|150-499",
+        "agent": 8,
+        "human": 1,
+        "paired": 1
+      },
+      {
+        "key": "prisma/prisma|TypeScript|500+",
+        "agent": 44,
+        "human": 1,
+        "paired": 1
+      },
+      {
+        "key": "supabase/supabase|JavaScript|50-149",
+        "agent": 2,
+        "human": 1,
+        "paired": 1
+      },
+      {
+        "key": "apache/airflow|Go|20-49",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "apache/airflow|Go|500+",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "apache/airflow|JSON|50-149",
+        "agent": 0,
+        "human": 2,
+        "paired": 0
+      },
+      {
+        "key": "apache/airflow|JSON|500+",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "apache/airflow|Shell|50-149",
+        "agent": 0,
+        "human": 2,
+        "paired": 0
+      },
+      {
+        "key": "apache/airflow|TOML|150-499",
+        "agent": 0,
+        "human": 2,
+        "paired": 0
+      },
+      {
+        "key": "apache/airflow|TOML|500+",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "apache/airflow|TypeScript|20-49",
+        "agent": 2,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "apache/airflow|TypeScript|500+",
+        "agent": 0,
+        "human": 4,
+        "paired": 0
+      },
+      {
+        "key": "apache/airflow|YAML|150-499",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "apache/airflow|YAML|20-49",
+        "agent": 0,
+        "human": 5,
+        "paired": 0
+      },
+      {
+        "key": "apache/airflow|YAML|50-149",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "grafana/grafana|Other|20-49",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "grafana/grafana|Other|50-149",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "grafana/grafana|Shell|50-149",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "grafana/grafana|YAML|150-499",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "grafana/grafana|YAML|20-49",
+        "agent": 0,
+        "human": 4,
+        "paired": 0
+      },
+      {
+        "key": "langchain-ai/langchain|JavaScript|20-49",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "langchain-ai/langchain|JavaScript|50-149",
+        "agent": 0,
+        "human": 2,
+        "paired": 0
+      },
+      {
+        "key": "langchain-ai/langchain|JavaScript|500+",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "langchain-ai/langchain|Other|150-499",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "langchain-ai/langchain|Other|500+",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "langchain-ai/langchain|TOML|20-49",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "prisma/prisma|HTML|500+",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "prisma/prisma|JavaScript|20-49",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "prisma/prisma|JavaScript|50-149",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "prisma/prisma|JavaScript|500+",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "prisma/prisma|Other|500+",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "prisma/prisma|TypeScript|20-49",
+        "agent": 0,
+        "human": 2,
+        "paired": 0
+      },
+      {
+        "key": "prisma/prisma|TypeScript|50-149",
+        "agent": 5,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "prisma/prisma|YAML|20-49",
+        "agent": 2,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|JavaScript|20-49",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|JSON|150-499",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|JSON|20-49",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|JSON|50-149",
+        "agent": 3,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|Other|50-149",
+        "agent": 0,
+        "human": 2,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|Other|500+",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|Shell|50-149",
+        "agent": 0,
+        "human": 2,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|Svelte|500+",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|TOML|20-49",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|TOML|50-149",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|Vue|500+",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|XML|150-499",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|YAML|150-499",
+        "agent": 5,
+        "human": 0,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|YAML|20-49",
+        "agent": 0,
+        "human": 1,
+        "paired": 0
+      },
+      {
+        "key": "supabase/supabase|YAML|50-149",
+        "agent": 1,
+        "human": 0,
+        "paired": 0
+      }
+    ]
+  },
+  "matchedBotAuthorOnly": {
+    "pairs": 12,
+    "agentRealMean": 1.236111111111111,
+    "humanRealMean": 0.47222222222222215,
+    "diff": 0.7638888888888888,
+    "ci": [
+      0.19444444444444445,
+      1.3055555555555556
+    ]
+  },
+  "matchedIgnoringRepo": {
+    "pairs": 380,
+    "diff": 0.6916666666666667,
+    "ci": [
+      0.6190789473684212,
+      0.7660087719298249
+    ]
+  },
+  "bySize": [
+    {
+      "bucket": "20-49",
+      "n": 208,
+      "realMean": 0.7596153846153842,
+      "realPctExplicit": 22.155448717948726,
+      "syntheticMean": 1.620592948717948
+    },
+    {
+      "bucket": "50-149",
+      "n": 260,
+      "realMean": 0.7993589743589745,
+      "realPctExplicit": 24.423076923076913,
+      "syntheticMean": 1.5740384615384624
+    },
+    {
+      "bucket": "150-499",
+      "n": 273,
+      "realMean": 0.898046398046398,
+      "realPctExplicit": 28.601953601953603,
+      "syntheticMean": 1.5186202686202688
+    },
+    {
+      "bucket": "500+",
+      "n": 259,
+      "realMean": 0.9658944658944659,
+      "realPctExplicit": 32.368082368082376,
+      "syntheticMean": 1.226190476190476
+    }
+  ],
+  "byRepo": [
+    {
+      "repo": "grafana/grafana",
+      "n": 455,
+      "realMean": 0.8739926739926737,
+      "syntheticMean": 1.5474358974358964
+    },
+    {
+      "repo": "apache/airflow",
+      "n": 217,
+      "realMean": 0.6532258064516128,
+      "syntheticMean": 1.5510752688172054
+    },
+    {
+      "repo": "supabase/supabase",
+      "n": 193,
+      "realMean": 0.8531951640759932,
+      "syntheticMean": 1.379101899827288
+    },
+    {
+      "repo": "prisma/prisma",
+      "n": 72,
+      "realMean": 1.5439814814814814,
+      "syntheticMean": 1.0983796296296298
+    },
+    {
+      "repo": "langchain-ai/langchain",
+      "n": 63,
+      "realMean": 0.728835978835979,
+      "syntheticMean": 1.4695767195767195
+    }
+  ],
+  "emptyBodyShare": 16.400000000000002
+}
