@@ -22,6 +22,7 @@ import { renderHtml } from './render.js';
 import { runValidation, formatValidationReport } from './validate.js';
 import { runRegression, formatRegressionReport } from './regress.js';
 import { runSweep, sweepWorker, DiskSpaceError } from './sweep.js';
+import { runGate, formatGateReport } from './gate.js';
 import { AnthropicBackend, OpenAiBackend } from './vendor/backends.js';
 import type { LlmBackend } from '@reckon/core';
 import { LeakageError } from './coverage.js';
@@ -336,7 +337,36 @@ function cmdCalibrate() {
   console.error(`wrote ${dest} — n=${out.n}, ${(out.shareAtZero * 100).toFixed(1)}% at zero`);
 }
 
+/**
+ * The body-density gate. Runs before anything is built on top of coverage, because it decides
+ * whether a coverage heatmap can be honest about a repository at all — and it costs seconds and
+ * no model calls, which makes it the cheapest number in the project.
+ */
+async function cmdGate() {
+  const file = arg('repos');
+  if (!file) throw new Error('usage: riskmap gate --repos <file> [--out DIR] [--keep-clones]');
+  const urls = readFileSync(resolve(file), 'utf8').split('\n');
+  const outDir = resolve(arg('out', join(ROOT, 'out', 'gate'))!);
+  mkdirSync(outDir, { recursive: true });
+  const summary = await runGate({
+    urls,
+    cacheDir: resolve(arg('cache', join(ROOT, 'clones', '.gate-cache'))!),
+    keepClones: flag('keep-clones'),
+    onProgress: (m) => console.error(m),
+  });
+  writeFileSync(join(outDir, 'gate.md'), formatGateReport(summary));
+  writeFileSync(join(outDir, 'gate.json'), `${JSON.stringify(summary, null, 2)}\n`);
+  const p = summary.passRate;
+  console.error('');
+  console.error(
+    `pass ${p.pass}/${p.denominator} (${p.denominator ? ((100 * p.pass) / p.denominator).toFixed(0) : '—'}%)  ` +
+      `weak ${p.weak}  fail ${p.fail}  errored ${p.errored}`
+  );
+  console.error(`wrote ${join(outDir, 'gate.md')}`);
+}
+
 const COMMANDS: Record<string, () => void | Promise<void>> = {
+  gate: cmdGate,
   map: cmdMap,
   sweep: cmdSweep,
   'sweep-build': cmdSweepBuild,
