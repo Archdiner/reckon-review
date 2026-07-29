@@ -80,6 +80,11 @@ export interface ThreeArmRow {
   recordChars: number;
   paraphraseChars: number;
   syntheticChars: number;
+  /** Raw per-question scores, kept so the report can show the DISTRIBUTION rather than
+   *  collapsing to a mean. See `distribution` for why that matters. */
+  rawReal: number[];
+  rawSynthetic: number[];
+  rawParaphrase: number[];
 }
 
 export function loadThreeArm(root: string): ThreeArmRow[] {
@@ -112,6 +117,9 @@ export function loadThreeArm(root: string): ThreeArmRow[] {
       recordChars: record.trim().length,
       paraphraseChars: paraphrase.trim().length,
       syntheticChars: synthetic.trim().length,
+      rawReal: r,
+      rawSynthetic: s2,
+      rawParaphrase: p,
     });
   }
   return rows;
@@ -134,6 +142,28 @@ function formShare(rows: ThreeArmRow[]): { share: number; ci: [number, number] }
   return { share: mean(perPr) * 100, ci: [bootstrapCI(perPr)[0] * 100, bootstrapCI(perPr)[1] * 100] };
 }
 
+/**
+ * Share of questions scoring 0, 1 and 2.
+ *
+ * THE DISTRIBUTION IS THE RESULT; THE MEAN IS A SUMMARY THAT MISLEADS HERE.
+ *
+ * The real-record scores are bimodal, heavily so on the human arm: 58.7% of questions score 0
+ * and 8.6% score 2. A mean of 0.49 sits in the trough between those masses and describes
+ * almost no actual PR. Worse, it makes two completely different situations look like one
+ * number — "the record says nothing" and "the record says something partial" average to the
+ * same place as "half the records are good and half are missing".
+ *
+ * Reporting 0/1/2 shares separates the study's two findings visually. Absence shows up as mass
+ * at 0. Reproducibility shows up as the real and synthetic columns having the SAME shape.
+ */
+function distribution(xs: number[]): string {
+  const t = xs.length;
+  if (t === 0) return 'n/a | n/a | n/a';
+  const c = [0, 0, 0];
+  for (const v of xs) c[v]++;
+  return c.map((n) => `${((n / t) * 100).toFixed(1)}%`).join(' | ');
+}
+
 function armBlock(label: string, rows: ThreeArmRow[]): string[] {
   const L: string[] = [];
   if (rows.length === 0) return [`### ${label}`, '', '_no PRs in this cut_', ''];
@@ -141,13 +171,17 @@ function armBlock(label: string, rows: ThreeArmRow[]): string[] {
   const gapPar = rows.map((r) => r.real - r.paraphrase);
   const [sl, sh] = bootstrapCI(gapSyn);
   const [pl, ph] = bootstrapCI(gapPar);
+  const flat = (k: 'rawReal' | 'rawSynthetic' | 'rawParaphrase') => rows.flatMap((r) => r[k]);
   L.push(`### ${label}  (n=${rows.length} PRs, ${rows.reduce((a, r) => a + r.nQuestions, 0)} questions)`);
   L.push('');
-  L.push('| arm | mean score | explicit % |');
-  L.push('| --- | --- | --- |');
-  L.push(`| real record | ${f2(mean(rows.map((r) => r.real)))} | ${f1(mean(rows.map((r) => r.realPct2)))} |`);
-  L.push(`| paraphrased record (form control) | ${f2(mean(rows.map((r) => r.paraphrase)))} | ${f1(mean(rows.map((r) => r.paraphrasePct2)))} |`);
-  L.push(`| synthetic (from diff) | ${f2(mean(rows.map((r) => r.synthetic)))} | ${f1(mean(rows.map((r) => r.syntheticPct2)))} |`);
+  L.push('Share of questions at each score. The distribution is the result; the mean is a');
+  L.push('summary that misleads when the scores are bimodal, which on the real arm they are.');
+  L.push('');
+  L.push('| arm | 0 absent | 1 partial | 2 explicit | mean |');
+  L.push('| --- | --- | --- | --- | --- |');
+  L.push(`| real record | ${distribution(flat('rawReal'))} | ${f2(mean(rows.map((r) => r.real)))} |`);
+  L.push(`| paraphrased record (form control) | ${distribution(flat('rawParaphrase'))} | ${f2(mean(rows.map((r) => r.paraphrase)))} |`);
+  L.push(`| synthetic (from diff) | ${distribution(flat('rawSynthetic'))} | ${f2(mean(rows.map((r) => r.synthetic)))} |`);
   L.push('');
   L.push(`real - synthetic: **${f2(mean(gapSyn))}**  95% CI [${f2(sl)}, ${f2(sh)}]`);
   L.push(`real - paraphrase: **${f2(mean(gapPar))}**  95% CI [${f2(pl)}, ${f2(ph)}]`);
@@ -178,12 +212,34 @@ export function formatThreeArmReport(rows: ThreeArmRow[]): string {
   L.push('isolates the confound that the question and the synthetic description were produced');
   L.push('by the same model from the same diff by the same reasoning.');
   L.push('');
+  L.push('## The two findings this corpus supports');
+  L.push('');
+  L.push('They are separate claims with separate evidence, and they end in the same place.');
+  L.push('');
+  L.push('**1. Absence.** Where humans write the record unaided, often there is no record. Look');
+  L.push('for this as mass at score 0 on the real arm of the human cut.');
+  L.push('');
+  L.push('**2. Reproducibility.** Where the record IS full, a model reproduces it from the diff');
+  L.push('alone. Look for this as the real and synthetic arms having the same SHAPE in the agent');
+  L.push('cut — not as a mean difference near zero, which could arise many ways.');
+  L.push('');
+  L.push('Neither claim needs anyone to have written badly. Together they say the written record');
+  L.push('is not evidence that a human understood the change: where it is absent there is nothing');
+  L.push('to read, and where it is present it is recoverable from the artifact.');
+  L.push('');
+  L.push('The agent cut is the stronger of the two, and its selection story is the explanation');
+  L.push('rather than a nuisance to be waved off. A `Co-authored-by` trailer marks a PR from a');
+  L.push('team that uses agents, and those records were plausibly model-drafted from the diff in');
+  L.push('the first place. That is precisely why they are reproducible: the cut where records are');
+  L.push('fullest is the cut where they are most recoverable. State it before a reader finds it.');
+  L.push('');
+  L.push(...armBlock('Agent-attested — the REPRODUCIBILITY finding', rows.filter((r) => r.provenance === 'agent')));
+  L.push(...armBlock('Human-authored — the ABSENCE finding', rows.filter((r) => r.provenance === 'human')));
   L.push(...armBlock('All PRs', rows));
   L.push(...armBlock('Substantive records only (author wrote something beyond the title)', rows.filter((r) => r.tier === 'substantive')));
   L.push(...armBlock('Trivial records (body restates the title or is process chatter)', rows.filter((r) => r.tier === 'trivial')));
   L.push(...armBlock('Empty records (title alone)', rows.filter((r) => r.tier === 'empty')));
-  L.push(...armBlock('Agent-attested', rows.filter((r) => r.provenance === 'agent')));
-  L.push(...armBlock('Human-authored', rows.filter((r) => r.provenance === 'human')));
+  L.push(...armBlock('Agent-attested, substantive records only', rows.filter((r) => r.provenance === 'agent' && r.tier === 'substantive')));
 
   L.push('## Text length by arm');
   L.push('');
