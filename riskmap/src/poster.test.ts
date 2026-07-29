@@ -196,7 +196,9 @@ console.log('\nthe repository matrix draws every row and hides nothing');
   for (const r of d.repoAreas) {
     ok(`row present: ${r.repo}`, svg.includes(r.repo));
   }
-  ok('a refused repository says why instead of showing colour', /refused — 4% of its commits/.test(svg));
+  // The wording shortens in two-column mode, so the assertion matches the invariant — a refusal states
+  // its measured body density instead of showing colour — not one particular sentence.
+  ok('a refused repository says why instead of showing colour', /refused — 4% (of its commits|body density)/.test(svg));
   ok('thin cells are hatched, not given a ramp colour', svg.includes('url(#thinHatch)'));
   ok('the hatch pattern is defined', svg.includes('<pattern id="thinHatch"'));
   ok('the pooled figure and the between-repository range are both printed', /Pooled .*Between repositories/.test(svg));

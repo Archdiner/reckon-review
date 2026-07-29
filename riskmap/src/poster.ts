@@ -761,30 +761,43 @@ function matrixPanel(d: PosterData, x: number, y: number, w: number): PanelResul
     )
   );
 
+  // TWO COLUMNS. One column of rows put a 20-cell grid in a quarter of the canvas width and left a
+  // 700-pixel void beside it, which reads as a mistake rather than as breathing room. Splitting the
+  // rows fills the width, halves the height, and matches the gate panel above it, so the two read as
+  // the same kind of table.
+  const cols = rows2.length > 6 ? 2 : 1;
+  const colGap = 46;
+  const colW = (w - (cols - 1) * colGap) / cols;
+  const perCol = Math.ceil(rows2.length / cols);
   const labelW = 206;
   const rightW = 96;
-  const gridW = w - labelW - rightW;
-  const cell = Math.min(20, gridW / maxAreas);
+  const gridW = colW - labelW - rightW;
+  const cell = Math.min(26, gridW / maxAreas);
   const rowH = Math.max(15, cell + 3);
   const top = 46;
 
-  rows2.forEach((r, i) => {
+  rows2.forEach((r, idx) => {
+    const col = Math.floor(idx / perCol);
+    const i = idx % perCol;
+    const ox = col * (colW + colGap);
     const by = top + i * rowH;
-    parts.push(text(0, by + cell * 0.72, r.repo, 'repoName'));
+    parts.push(text(ox, by + cell * 0.72, r.repo, 'repoName'));
     if (r.refused) {
-      parts.push(rect(labelW, by, gridW, Math.max(6, cell - 3), '#dbe6ec'));
+      parts.push(rect(ox + labelW, by, gridW, Math.max(6, cell - 3), '#dbe6ec'));
       parts.push(
         text(
-          labelW + 8,
+          ox + labelW + 8,
           by + cell * 0.72,
-          `refused — ${(r.bodyDensity * 100).toFixed(0)}% of its commits carry a body, below the floor`,
+          cols > 1
+            ? `refused — ${(r.bodyDensity * 100).toFixed(0)}% body density, below the floor`
+            : `refused — ${(r.bodyDensity * 100).toFixed(0)}% of its commits carry a body, below the floor`,
           'tick'
         )
       );
       return;
     }
     r.areas.forEach((cov, j) => {
-      const cx = labelW + j * cell;
+      const cx = ox + labelW + j * cell;
       if (cov === null) {
         // Hatched, not coloured: too thin to read rather than low.
         parts.push(rect(cx, by, Math.max(2, cell - 2), Math.max(2, cell - 2), 'url(#thinHatch)'));
@@ -793,16 +806,16 @@ function matrixPanel(d: PosterData, x: number, y: number, w: number): PanelResul
       parts.push(rect(cx, by, Math.max(2, cell - 2), Math.max(2, cell - 2), colourFor(cov)));
     });
     parts.push(
-      text(labelW + gridW + 10, by + cell * 0.72, pctLabel(r.coverage ?? 0), 'tickStrong')
+      text(ox + labelW + gridW + 10, by + cell * 0.72, pctLabel(r.coverage ?? 0), 'tickStrong')
     );
     if (r.areasNotScored > 0) {
       parts.push(
-        text(labelW + gridW + 52, by + cell * 0.72, `+${r.areasNotScored}`, 'tick')
+        text(ox + labelW + gridW + 52, by + cell * 0.72, `+${r.areasNotScored}`, 'tick')
       );
     }
   });
 
-  const ly = top + rows2.length * rowH + 16;
+  const ly = top + perCol * rowH + 16;
   if (pooledQuestions > 0) {
     const rates = scored.map((r) => r.coverage ?? 0);
     parts.push(
