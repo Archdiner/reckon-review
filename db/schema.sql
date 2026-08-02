@@ -54,6 +54,12 @@ create table if not exists checkpoints (
   core_count      integer not null default 0, -- changed files tiered 'core'
   graph_used      boolean not null default false, -- did the structural context actually build
   graph_ms        integer,                    -- how long it took (cost/latency observability)
+  -- The SUBSYSTEM ROLLUP of the codebase graph we already build per PR and otherwise discard:
+  -- area nodes (files, defs, fan-in, PageRank) + which areas reference which. Tens of nodes, not
+  -- thousands of files. This is the architecture diagram the knowledge map is drawn on, and it
+  -- cannot be recomputed later because the source it came from is never stored. The file-level
+  -- graph and the source stay ephemeral; only this summary survives.
+  area_graph      jsonb,
   passed_by       text,                       -- github login who passed (audit)
   passed_by_id    bigint,
   passed_at       timestamptz,
@@ -75,6 +81,7 @@ alter table checkpoints add column if not exists graph_used boolean not null def
 alter table checkpoints add column if not exists graph_ms integer;
 alter table checkpoints add column if not exists author_login text;
 alter table checkpoints add column if not exists author_id bigint;
+alter table checkpoints add column if not exists area_graph jsonb;
 -- The funnel and the drift count are both "checkpoints in this repo, recent first" scans.
 create index if not exists checkpoints_repo_created_idx on checkpoints(repo_id, created_at desc);
 
@@ -103,10 +110,11 @@ create index if not exists attempts_checkpoint_idx on attempts(checkpoint_id);
 -- now stamps it on every event it forwards. These two tables are where the surfaces meet.
 
 -- The identity that spans both surfaces. Upserted from whichever surface sees the user first:
--- a forwarded MCP event, or the PR handlers, which promote EVERYONE Reckon actually interacts
--- with (the PR author at gate time, and anyone who replies with an explanation), not only the
--- people who eventually pass. Populating it on pass alone made this table a subset of
--- `demonstrations` and told you nothing about reach or drop-off.
+-- a forwarded MCP event, or the PR handlers, which promote everyone who ACTUALLY ENGAGED (replied
+-- to a gate with an explanation, pass or fail), not only the people who eventually passed.
+-- Populating it on pass alone made this table a subset of `demonstrations` and told you nothing
+-- about reach or drop-off. A PR author whose diff was merely scanned is NOT here: they did not
+-- choose to interact, so their login stays on checkpoints.author_login, which purges on uninstall.
 create table if not exists users (
   github_id     bigint primary key,          -- the cross-surface join key
   github_login  text,

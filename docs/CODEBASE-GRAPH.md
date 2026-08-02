@@ -18,6 +18,7 @@ the system?" This is the feature that turns Reckon from a seatbelt into somethin
 | D1 | **Build first** (tree-sitter repo map, ~80% recall, free), not buy | Self-contained, no service dependency, good enough to start. |
 | D2 | **Roadmap toward buy** (Sourcegraph SCIP / GitHub code-nav) | Precise xrefs + types are *objectively better*; the build is a bridge, not the destination. |
 | D3 | **PR-gate graph is EPHEMERAL, per-PR** | Avoids the persistent-index staleness/cost/rebuild nightmare at multi-repo scale. |
+| D3a | **The SUBSYSTEM ROLLUP of that graph IS kept** (`checkpoints.area_graph`) | Tens of nodes, not thousands of files, so none of D3's costs apply: no index to keep fresh, no rebuild tail, refreshed free on the next gate. It is what the knowledge map is drawn on (`docs/KNOWLEDGE-MAP.md` §4), and it cannot be recomputed later because the source it came from is never stored. The file-level graph, the source, and the symbol names still die with the request. |
 | D4 | **Reckon will read beyond the diff** | Required to see a change's neighborhood. **Changes the "never reads code outside the PR" claim** (see Open Dependencies). |
 | D5 | Impact output is **advisory, never authoritative** | Sound impact analysis doesn't exist for dynamic/cross-service code (§3). Matches Reckon's nature: a comprehension prompt, not a compiler gate. |
 

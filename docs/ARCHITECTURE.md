@@ -97,6 +97,10 @@ Changed decisions → re-gate. Closes the "pass then push slop" hole.
                      budget-packed structural context. context.ts is the best-effort, timeout-
                      guarded entry point. eval.ts is the objective harness (precision/recall/
                      coverage/efficiency). Advisory: name-based edges are a lower bound.
+                     area-graph.ts rolls the SAME graph up from files to subsystems and that
+                     rollup IS persisted (checkpoints.area_graph): the architecture diagram the
+                     knowledge map is drawn on. The file-level graph and the source stay
+                     ephemeral; only the tens-of-nodes summary survives.
 
   durable record     users + demonstrations tables, keyed by github_id, NOT FK'd to installations
                      → survives uninstall. On a pass, promote the passer + append one demonstration
@@ -118,9 +122,11 @@ Changed decisions → re-gate. Closes the "pass then push slop" hole.
                      KNOWLEDGE-MAP.md.
 
   report             src/report/* — offline, read-only. Pulls the whole database and renders one
-  (visualization)    self-contained HTML file: collection health, usage funnel, the area map, a
-                     person x area matrix, domain profiles per person. `npm run report`, or
-                     `npm run report:demo` against a synthetic snapshot. Never writes.
+  (visualization)    self-contained HTML file: collection health, usage funnel, the ARCHITECTURE
+                     DIAGRAM (from the persisted area graph, coloured by comprehension), the area
+                     map, a person x area matrix, domain profiles. layout.ts is a deterministic
+                     force layout (no Math.random, so the same codebase draws the same). `npm run
+                     report`, or `npm run report:demo`. Never writes.
 ```
 
 Everything off the merge path (closeout, durable record, graph) is **best-effort**: any failure
@@ -135,7 +141,8 @@ is logged and swallowed so it can never block or delay a merge.
   repos           active repos (+ parsed config)        ─┤ uninstall /
   checkpoints     EVERY PR outcome: decisions, rigor, closeout, status  ─┤ repo-removal
                   (pending|passed|trivial|peripheral|capped|error) +   ─┤
-                  files, areas, hub/core counts, graph timing, author  ─┤
+                  files, areas, hub/core counts, graph timing, author, ─┤
+                  area_graph (the subsystem rollup: the diagram)        ─┤
   attempts        every explanation + its grade         ─┘
 
   users           cross-surface identity (github_id)    ─┐ DURABLE — not FK'd to

@@ -9,7 +9,8 @@
  * underneath it, so nothing here depends on distinguishing hues.
  */
 import { FRESH_FLOOR } from '../knowledge/freshness.js';
-import type { AreaSummary, DomainProfile, Finding, ReportModel, Severity } from './model.js';
+import { edgePoint, layout, type LayoutNode, type Placed } from './layout.js';
+import type { Architecture, AreaSummary, DomainProfile, Finding, ReportModel, Severity } from './model.js';
 
 // Sequential blue, light to dark, for continuous magnitude (confidence 0..1).
 const SEQ_LIGHT = ['#cde2fb', '#b7d3f6', '#9ec5f4', '#86b6ef', '#6da7ec', '#5598e7', '#3987e5', '#2a78d6', '#256abf', '#1c5cab', '#184f95', '#104281', '#0d366b'];
@@ -146,6 +147,94 @@ function renderAreaMap(areas: AreaSummary[], now: Date): string {
     }).join('')}</div>
     <div class="cards">${cards}</div>
     ${table}
+  </section>`;
+}
+
+
+/**
+ * THE ARCHITECTURE DIAGRAM, drawn from the codebase graph we already build on every gate and
+ * used to throw away, with the knowledge map laid over it.
+ *
+ * This is the picture the card grid could not be. A grid can say "Persistence is stale"; only the
+ * diagram can say "Persistence is stale AND four other subsystems depend on it". Boxes are
+ * subsystems, edges are real reference dependencies extracted from the code, box size is how much
+ * of the codebase the subsystem is, and box colour is comprehension status.
+ *
+ * Composite encoding on purpose: status is colour AND an icon AND a word, so nothing here rests
+ * on telling two hues apart, and the same table view sits underneath.
+ */
+function renderDiagram(arch: Architecture, areas: AreaSummary[], now: Date): string {
+  const byKey = new Map(areas.filter((a) => a.repo === arch.repo).map((a) => [a.key, a]));
+  const maxFiles = Math.max(1, ...arch.nodes.map((n) => n.files));
+
+  const nodes: LayoutNode[] = arch.nodes.map((n) => {
+    const a = byKey.get(n.area);
+    const label = a?.label ?? n.area;
+    // Width follows the label so text never overflows its box; height follows size, so a big
+    // subsystem reads as big without the label shrinking with it.
+    const w = Math.min(210, Math.max(112, label.length * 7.4 + 40));
+    const h = 46 + Math.round((n.files / maxFiles) * 26);
+    return { id: n.area, w, h, weight: n.rank };
+  });
+  const L = layout(nodes, arch.edges);
+  const placed = new Map<string, Placed>(L.nodes.map((p) => [p.id, p]));
+  const maxW = Math.max(1, ...arch.edges.map((e) => e.weight));
+
+  const edgeSvg = arch.edges.map((e) => {
+    const a = placed.get(e.from), b = placed.get(e.to);
+    if (!a || !b) return '';
+    const p1 = edgePoint(b, a, 2); // leaves the source box
+    const p2 = edgePoint(a, b, 2); // arrives at the target box
+    const strength = e.weight / maxW;
+    return `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" class="dep"
+      stroke-width="${(1.2 + strength * 2.2).toFixed(2)}" opacity="${(0.45 + strength * 0.4).toFixed(2)}"
+      marker-end="url(#arrow)"><title>${esc(byKey.get(e.from)?.label ?? e.from)} references ${esc(byKey.get(e.to)?.label ?? e.to)} (${e.weight} symbol${e.weight === 1 ? '' : 's'})</title></line>`;
+  }).join('');
+
+  const nodeSvg = arch.nodes.map((n) => {
+    const p = placed.get(n.area)!;
+    const a = byKey.get(n.area);
+    const label = a?.label ?? n.area;
+    const tone = a?.statusTone ?? 'critical';
+    const icon = a?.statusIcon ?? '\u25a0';
+    const holders = a?.fresh.map((f) => f.login).join(', ') || 'nobody currently';
+    const tip = [
+      `${label} (${arch.repo})`,
+      `${a?.statusLabel ?? 'Unexplained'}: ${holders}`,
+      `${n.files} file(s), ${n.defs} symbol(s), referenced by ${n.fanIn} file(s) outside it`,
+      `${a?.changes ?? 0} substantive change(s), last explained ${ago(a?.lastDemoAt, now)}`,
+    ].join('\n');
+    return `<g class="node tone-${tone}" transform="translate(${p.x - p.w / 2},${p.y - p.h / 2})">
+      <title>${esc(tip)}</title>
+      <rect width="${p.w}" height="${p.h}" rx="7" class="node-box"/>
+      <rect width="${p.w}" height="3" rx="1.5" class="node-bar"/>
+      <text x="${p.w / 2}" y="${p.h / 2 - 1}" class="node-label">${esc(label)}</text>
+      <text x="${p.w / 2}" y="${p.h / 2 + 13}" class="node-sub">${icon} ${esc(a?.statusLabel ?? 'Unexplained')}</text>
+    </g>`;
+  }).join('');
+
+  return `<figure class="diagram">
+    <figcaption>${esc(arch.repo)} <span class="diag-meta">${arch.nodes.length} subsystems, ${arch.edges.length} dependencies, from the graph built at <code>${esc(arch.headSha.slice(0, 7))}</code></span></figcaption>
+    <div class="scroll-x"><svg viewBox="0 0 ${L.width} ${L.height}" width="${L.width}" height="${L.height}" role="img"
+      aria-label="Architecture of ${esc(arch.repo)}: ${arch.nodes.length} subsystems coloured by comprehension status">
+      <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" class="dep-head"/></marker></defs>
+      <g>${edgeSvg}</g><g>${nodeSvg}</g>
+    </svg></div>
+    <p class="diag-note">Arrows point from a subsystem to what it depends on, weighted by how many symbols cross the boundary. Box size is how much of the codebase the subsystem is. Edges are name-based, so they are a lower bound on real coupling, never a ceiling.${
+      arch.truncated ? ' The graph was built over a bounded subset of this repo, so it is partial.' : ''
+    }${arch.omitted ? ` ${arch.omitted} smaller subsystem(s) are not drawn.` : ''}</p>
+  </figure>`;
+}
+
+function renderArchitecture(m: ReportModel, now: Date): string {
+  if (!m.architectures.length) {
+    return `<section id="arch"><h2>Architecture</h2><p class="empty">No codebase graph has been persisted yet. It is captured on the next gate that builds one, which needs a repo in a language the extractor supports (TypeScript and JavaScript today).</p></section>`;
+  }
+  return `<section id="arch">
+    <h2>Architecture, coloured by who understands it</h2>
+    <p class="lede">Not hand-drawn. This is the def/ref graph Reckon already builds on every gate, rolled up from files to subsystems and kept. The shape comes from the code; the colour comes from the demonstrations. An unexplained box with many arrows into it is the thing to fix first.</p>
+    ${m.architectures.map((a) => renderDiagram(a, m.areas, now)).join('')}
   </section>`;
 }
 
@@ -323,6 +412,22 @@ section { background:var(--surface); border:1px solid var(--ring); border-radius
 .fun-rate { color:var(--muted); font-size:12px; }
 .fun-rate .warn { color:var(--serious); }
 
+/* architecture diagram */
+.diagram { margin:0 0 22px; }
+.diagram figcaption { font-size:13px; font-weight:600; margin-bottom:10px; }
+.diag-meta { font-weight:400; color:var(--muted); font-size:12px; }
+.diagram code { font-size:11px; background:var(--grid); border-radius:3px; padding:1px 4px; }
+.diagram svg { display:block; max-width:100%; height:auto; }
+.dep { stroke:var(--muted); fill:none; }
+.dep-head { fill:var(--muted); }
+.node-box { fill:var(--surface); stroke:var(--ring); stroke-width:1; }
+.node-bar { fill:var(--tone); }
+.node:hover .node-box { stroke:var(--tone); stroke-width:2; }
+.node-label { fill:var(--ink); font-size:12.5px; font-weight:600; text-anchor:middle; }
+.node-sub { fill:var(--tone); font-size:10px; font-weight:600; text-anchor:middle;
+  letter-spacing:0.04em; text-transform:uppercase; }
+.diag-note { color:var(--muted); font-size:11.5px; margin:8px 0 0; max-width:82ch; }
+
 /* area cards */
 .legend { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:6px 18px; margin-bottom:16px; }
 .legend-item { display:flex; align-items:baseline; gap:6px; font-size:12px; color:var(--ink-2); }
@@ -394,6 +499,7 @@ details { margin-top:10px; } summary { cursor:pointer; color:var(--ink-2); font-
 ${renderHealth(m.findings)}
 ${renderScope(m, now)}
 ${renderFunnel(m)}
+${renderArchitecture(m, now)}
 ${renderAreaMap(m.areas, now)}
 ${renderMatrix(m.areas, now)}
 ${renderProfiles(m.profiles, now)}

@@ -177,6 +177,9 @@ async function runGate(context: any, deps: Deps): Promise<void> {
   await deps.store.createCheckpoint({
     ...common, check_run_id, decisions, decisions_hash, rigor, status: 'pending',
     hub_count: sc.hubCount, core_count: sc.coreCount, graph_used: Boolean(sc.text), graph_ms,
+    // The subsystem rollup of the graph we just built and would otherwise throw away. The
+    // report draws the architecture from the newest one of these per repo.
+    area_graph: sc.areaGraph,
   });
   await gh.postComment(octokit, owner, repo, pr.number, elicitBody(decisions));
 }

@@ -22,6 +22,8 @@ export interface CheckpointRow {
   skip_reason?: string | null; files?: string[] | null; areas?: string[] | null;
   hub_count?: number | null; core_count?: number | null; graph_used?: boolean | null; graph_ms?: number | null;
   author_login?: string | null; author_id?: number | null;
+  /** The persisted subsystem rollup of the codebase graph (src/graph/area-graph.ts). */
+  area_graph?: { nodes: any[]; edges: any[]; truncated?: boolean; omitted?: number } | null;
   decisions: unknown; rigor: string; closeout?: unknown;
   passed_by: string | null; passed_by_id: number | null; passed_at: string | null;
   created_at: string; updated_at: string;

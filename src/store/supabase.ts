@@ -24,6 +24,7 @@ export interface CheckpointRow {
   core_count: number | null;
   graph_used: boolean | null;
   graph_ms: number | null;
+  area_graph: unknown | null;
   author_login: string | null;
   author_id: number | null;
   passed_by: string | null;
@@ -51,6 +52,7 @@ export interface NewCheckpoint {
   core_count?: number;
   graph_used?: boolean;
   graph_ms?: number | null;
+  area_graph?: unknown | null;
   author_login?: string | null;
   author_id?: number | null;
 }
@@ -109,7 +111,7 @@ export class SupabaseStore {
    *  can legitimately land before the SQL does; every write that uses one of these degrades to
    *  the pre-migration column set rather than failing. Only `createCheckpoint` is on the merge
    *  path, and it is the one that must never fail for a reason as cosmetic as a missing column. */
-  private static readonly LATE_CHECKPOINT_COLS = ['skip_reason', 'files', 'areas', 'hub_count', 'core_count', 'graph_used', 'graph_ms', 'author_login', 'author_id'] as const;
+  private static readonly LATE_CHECKPOINT_COLS = ['skip_reason', 'files', 'areas', 'hub_count', 'core_count', 'graph_used', 'graph_ms', 'area_graph', 'author_login', 'author_id'] as const;
 
   private static isMissingColumn(message: string): boolean {
     return /column .* does not exist|could not find the .* column/i.test(message);

@@ -6,10 +6,33 @@
  * while: every area status, a stale demonstration decayed by drift, and a couple of the health
  * findings firing, so the page can be reviewed before there is enough real data to fill it.
  */
-import { writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { buildGraph } from '../graph/repo-map.js';
+import { extractorFor } from '../graph/extractor.js';
+import { rollupAreas } from '../graph/area-graph.js';
 import { build } from './model.js';
 import { renderReport } from './render.js';
 import type { Snapshot } from './query.js';
+
+/**
+ * The architecture in the fixture is REAL: it runs the actual graph engine over this repo's own
+ * source, exactly as the gate does after untarring a tarball. That makes the demo an end-to-end
+ * check of buildGraph + rollupAreas, not a drawing of made-up boxes, so a regression in the
+ * rollup shows up here instead of silently in production.
+ */
+function localAreaGraph(root = 'src'): any {
+  const files: { path: string; content: string }[] = [];
+  const walk = (dir: string): void => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = `${dir}/${e.name}`;
+      if (e.isDirectory()) walk(p);
+      else if (extractorFor(p)) files.push({ path: p, content: readFileSync(p, 'utf8') });
+    }
+  };
+  walk(root);
+  return rollupAreas(buildGraph(files));
+}
+const AREA_GRAPH = localAreaGraph();
 
 const NOW = new Date('2026-08-02T12:00:00Z');
 const day = (n: number): string => new Date(NOW.getTime() - n * 86_400_000).toISOString();
@@ -22,6 +45,7 @@ function cp(o: Partial<Snapshot['checkpoints'][number]> & { areas: string[]; day
     status: 'passed', skip_reason: null, files: [], hub_count: 0, core_count: 1,
     graph_used: true, graph_ms: 900, author_login: 'archdiner', author_id: 11,
     decisions: [{ concept: 'x', summary: 'y' }], rigor: 'medium', closeout: { topics: [] },
+    area_graph: AREA_GRAPH,
     passed_by: 'archdiner', passed_by_id: 11, passed_at: day(daysAgo),
     created_at: day(daysAgo), updated_at: day(daysAgo), ...rest,
   };

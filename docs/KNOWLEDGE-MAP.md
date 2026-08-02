@@ -91,7 +91,43 @@ demonstration to lean on", which is a max.
 
 ---
 
-## 4. Seeing it
+## 4. The architecture comes from the code, not from a drawing
+
+We already build a whole-repo def/ref graph on every gate (fetch the tarball, extract defs/refs,
+PageRank) and then discard all of it except two integers. That graph knows which subsystems exist,
+which are load-bearing, and which depend on which. It is an architecture diagram nobody had looked
+at.
+
+`src/graph/area-graph.ts` rolls it up from files to areas and keeps the summary:
+
+```
+  nodes   area, files, defs, fanIn (referrers from OUTSIDE the area), rank (summed PageRank)
+  edges   area -> area, weighted by distinct symbols crossing the boundary
+```
+
+Persisting the rollup does not contradict D3 ("the PR-gate graph is ephemeral"). The file-level
+graph, the source, and the symbol names still die with the request. What survives is tens of nodes
+of subsystem-level summary, which cannot be reconstructed later because the source is gone.
+
+Two things follow, and the second is the one that matters:
+
+1. **The report draws the real diagram**, with comprehension status as the colour. A card grid can
+   say "Persistence is stale". Only the diagram can say "Persistence is stale AND four other
+   subsystems depend on it".
+2. **The map is seeded from the graph, not from activity.** Built only from PRs, the map could
+   only ever show subsystems someone had already touched, so a subsystem nobody has gone near,
+   which is exactly the one with the worst bus factor, was invisible. The graph enumerates the
+   architecture whether or not anyone worked on it. Ranking within a status follows exposure
+   (fan-in and size) rather than churn, because an unexplained subsystem 30 files reference is a
+   worse gap than a busy leaf.
+
+Areas themselves stay PATH-derived, not graph-derived, so they still resolve when the graph does
+not build (unsupported language, timeout, huge repo). The graph supplies the edges and the
+importance, never the identity.
+
+---
+
+## 5. Seeing it
 
 ```
   npm run report              → reckon-report.html   (reads SUPABASE_URL / SUPABASE_SECRET_KEY)
@@ -115,13 +151,26 @@ finding, so it can be wired into a scheduled job later.
                 firing. how the layout gets reviewed before there is real data to fill it.
 ```
 
+```
+  src/report/layout.ts   deterministic force-directed layout for the diagram. Deterministic is
+                         the requirement, not a nicety: Math.random would move every box on every
+                         run, so two reports of the same unchanged codebase would look like
+                         different systems. Seeded positionally (rank order on a golden-angle
+                         spiral, hubs nearer the centre), then a separation pass that pushes
+                         overlapping BOXES apart, since FR lays out points and these are labels.
+```
+
 Sections: **collection health**, what is in the database, **usage funnel** (PRs seen → gated →
-answered → passed, with skip reasons), **the area map**, **who understands what** (person x area),
-**domains per person**.
+answered → passed, with skip reasons), **the architecture diagram**, **the area map**, **who
+understands what** (person x area), **domains per person**.
+
+`npm run report:demo` builds its architecture by running the real graph engine over this repo's
+own `src/`, so it is an end-to-end check of `buildGraph` + `rollupAreas` rather than a drawing of
+invented boxes.
 
 ---
 
-## 5. Collection health, and why it is derived
+## 6. Collection health, and why it is derived
 
 Background handler failures are logged to the process and nowhere else, and everything off the merge
 path is deliberately best-effort and swallowed. So a dropped write leaves no error row anywhere. The
@@ -142,7 +191,7 @@ Each finding carries a fix, because a finding with no fix is a complaint rather 
 
 ---
 
-## 6. What the map still cannot answer
+## 7. What the map still cannot answer
 
 - **Cross-repo areas.** An area key is scoped to one repo. `graph` in two repos are two areas, which
   is correct, but there is no notion yet of "the same subsystem across a fork".
@@ -153,3 +202,6 @@ Each finding carries a fix, because a finding with no fix is a complaint rather 
   stored, so pre-existing demonstrations can only be keyword-classified from concept and summary.
 - **The dev-time half is empty** unless the reckon-mcp host is deployed and forwarding. Nothing in
   this repo writes `mcp_events`; the report says so rather than showing a silent zero.
+- **The diagram is TS/JS only**, and its edges are name-based, so coupling is a lower bound
+  (docs/CODEBASE-GRAPH.md §3). A repo the extractor does not support has no diagram at all, and
+  its map falls back to activity-seeded areas.

@@ -4,6 +4,9 @@
  * into decompose's input — so the generated questions become criticality- and interaction-aware
  * ("this touches a hub referenced by 12 files, explain the contract") instead of diff-only.
  *
+ * It also returns the SUBSYSTEM ROLLUP of the same graph (area-graph.ts), which is the only
+ * piece that outlives the request: the architecture diagram the knowledge map gets drawn on.
+ *
  * Strictly best-effort and bounded by a timeout: a fetch failure, a huge/slow repo, an
  * unsupported-language repo, or any error returns '' and the gate proceeds exactly as before on
  * the diff alone. It NEVER blocks or delays the merge path.
@@ -11,6 +14,7 @@
 import { fetchRepoSources } from './fetch.js';
 import { buildGraph, serializeContext } from './repo-map.js';
 import { extractorFor } from './extractor.js';
+import { rollupAreas, type AreaGraph } from './area-graph.js';
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -18,6 +22,10 @@ export interface StructuralContext {
   text: string; // the serialized context, or '' if unavailable
   coreCount: number; // changed files tiered 'core'
   hubCount: number; // changed files that are load-bearing hubs (fan-in >= HUB_FANIN) → harsh rigor
+  /** The subsystem-level rollup of the same graph: the architecture diagram, worth keeping.
+   *  Null when no graph was built. See area-graph.ts for why persisting this is not a
+   *  contradiction of the ephemeral-graph decision. */
+  areaGraph: AreaGraph | null;
 }
 
 export async function structuralContext(
@@ -28,7 +36,7 @@ export async function structuralContext(
   changedPaths: string[],
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<StructuralContext> {
-  const empty: StructuralContext = { text: '', coreCount: 0, hubCount: 0 };
+  const empty: StructuralContext = { text: '', coreCount: 0, hubCount: 0, areaGraph: null };
   // Skip entirely if none of the changed files are in a language we can extract — no point
   // pulling a tarball to learn nothing.
   const changedSupported = changedPaths.filter((p) => extractorFor(p));
@@ -43,10 +51,13 @@ export async function structuralContext(
       const tiers = criticality(g, changedSupported);
       let text = serializeContext(g, changedSupported);
       if (truncated) text += '\n(note: large repo — graph built over a bounded subset of files)';
+      // The graph covers the WHOLE repo, not just the diff, so the rollup is the whole
+      // architecture. Free at this point: the expensive parts (tarball, parse) already ran.
       return {
         text,
         coreCount: tiers.filter((t) => t.tier === 'core').length,
         hubCount: tiers.filter((t) => t.fanIn >= HUB_FANIN).length,
+        areaGraph: rollupAreas(g, truncated),
       };
     })();
     const timeout = new Promise<StructuralContext>((resolve) => setTimeout(() => resolve(empty), timeoutMs));
