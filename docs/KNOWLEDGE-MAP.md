@@ -168,6 +168,22 @@ understands what** (person x area), **domains per person**.
 own `src/`, so it is an end-to-end check of `buildGraph` + `rollupAreas` rather than a drawing of
 invented boxes.
 
+Every number links back to the PR behind it (`src/report/links.ts`). The map's claim is that
+something was *demonstrably* explained, and evidence you cannot open is an assertion, not evidence:
+
+```
+  a person x area cell   → the PR behind their STRONGEST demonstration, the one driving the score
+  an area card           → an expandable list of every demonstration: who, verdict, concept,
+                           when, and its PR
+  a health finding       → the exact PRs it is about, capped at 12 with the overflow counted.
+                           a count says something is wrong; the links say WHERE, which is the
+                           difference between a dashboard and a work list
+  the diagram's caption  → the commit the graph was built at
+```
+
+The base URL is `RECKON_GITHUB_BASE` (default `https://github.com`) for Enterprise hosts, and a row
+with no usable provenance renders as plain text rather than a dead link.
+
 ---
 
 ## 6. Collection health, and why it is derived

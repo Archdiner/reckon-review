@@ -10,6 +10,7 @@
  */
 import { FRESH_FLOOR } from '../knowledge/freshness.js';
 import { edgePoint, layout, type LayoutNode, type Placed } from './layout.js';
+import { commitUrl, prUrl } from './links.js';
 import type { Architecture, AreaSummary, DomainProfile, Finding, ReportModel, Severity } from './model.js';
 
 // Sequential blue, light to dark, for continuous magnitude (confidence 0..1).
@@ -43,6 +44,14 @@ const SEVERITY_META: Record<Severity, { icon: string; label: string }> = {
   ok: { icon: '●', label: 'OK' },
 };
 
+/** An anchor, or plain text when there is no URL to point at. A dead link is worse than none. */
+function link(url: string | null, text: string, cls = '', title = ''): string {
+  const inner = esc(text);
+  return url
+    ? `<a href="${esc(url)}" class="${cls}" target="_blank" rel="noopener noreferrer"${title ? ` title="${esc(title)}"` : ''}>${inner}</a>`
+    : `<span class="${cls}"${title ? ` title="${esc(title)}"` : ''}>${inner}</span>`;
+}
+
 function statTile(value: string, label: string, sub?: string): string {
   return `<div class="tile"><div class="tile-v">${esc(value)}</div><div class="tile-l">${esc(label)}</div>${sub ? `<div class="tile-s">${esc(sub)}</div>` : ''}</div>`;
 }
@@ -55,6 +64,12 @@ function renderHealth(findings: Finding[]): string {
     return `<li class="finding sev-${f.severity}">
       <div class="finding-head"><span class="sev-badge" aria-hidden="true">${m.icon}</span><span class="sev-name">${m.label}</span><span class="finding-title">${esc(f.title)}</span>${f.count ? `<span class="finding-count">${f.count}</span>` : ''}</div>
       <p class="finding-detail">${esc(f.detail)}</p>
+      ${f.refs && f.refs.length ? (() => {
+        const multiRepo = new Set(f.refs!.map((r) => r.repo)).size > 1;
+        return `<p class="finding-refs"><span class="refs-label">Where</span> ${
+          f.refs!.map((r) => link(prUrl(r.repo, r.pr), multiRepo ? `${r.repo.split('/')[1] ?? r.repo} ${r.label}` : r.label, 'ref', `${r.repo}#${r.pr}`)).join(' ')
+        }${f.refsOmitted ? ` <span class="ref-more">and ${f.refsOmitted} more</span>` : ''}</p>`;
+      })() : ''}
       ${f.fix ? `<p class="finding-fix"><span class="fix-label">Fix</span> ${esc(f.fix)}</p>` : ''}
     </li>`;
   }).join('');
@@ -129,6 +144,16 @@ function renderAreaMap(areas: AreaSummary[], now: Date): string {
         <div><dt>Last explained</dt><dd>${ago(a.lastDemoAt, now)}</dd></div>
         <div><dt>Last changed</dt><dd>${ago(a.lastChangeAt, now)}</dd></div>
       </dl>
+      ${a.evidence.length ? `<details class="evidence">
+        <summary>${a.evidence.length} demonstration${a.evidence.length === 1 ? '' : 's'}</summary>
+        <ul>${a.evidence.map((e) => `<li>
+          <span class="ev-who">${esc(e.login)}</span>
+          <span class="ev-verdict v-${esc(e.verdict ?? 'none')}">${esc(e.verdict ?? 'unverdicted')}</span>
+          <span class="ev-concept" title="${esc(e.note || e.concept)}">${esc(e.concept)}</span>
+          <span class="ev-when">${ago(e.at, now)}</span>
+          ${link(prUrl(e.repo, e.pr), e.pr ? `#${e.pr}` : 'no PR recorded', 'ev-pr', e.pr ? `open ${e.repo}#${e.pr}` : 'this row predates provenance recording')}
+        </li>`).join('')}</ul>
+      </details>` : ''}
     </article>`;
   }).join('');
 
@@ -214,7 +239,7 @@ function renderDiagram(arch: Architecture, areas: AreaSummary[], now: Date): str
   }).join('');
 
   return `<figure class="diagram">
-    <figcaption>${esc(arch.repo)} <span class="diag-meta">${arch.nodes.length} subsystems, ${arch.edges.length} dependencies, from the graph built at <code>${esc(arch.headSha.slice(0, 7))}</code></span></figcaption>
+    <figcaption>${esc(arch.repo)} <span class="diag-meta">${arch.nodes.length} subsystems, ${arch.edges.length} dependencies, from the graph built at ${link(commitUrl(arch.repo, arch.headSha), arch.headSha.slice(0, 7), 'sha', `open commit ${arch.headSha.slice(0, 7)}`)}</span></figcaption>
     <div class="scroll-x"><svg viewBox="0 0 ${L.width} ${L.height}" width="${L.width}" height="${L.height}" role="img"
       aria-label="Architecture of ${esc(arch.repo)}: ${arch.nodes.length} subsystems coloured by comprehension status">
       <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -256,7 +281,12 @@ function renderMatrix(areas: AreaSummary[], now: Date): string {
       const strong = p.confidence >= 0.62; // ink flips to light well before the ramp gets dark
       // Reference the ramp slot by variable, not by hex, so the cell re-steps itself for the
       // dark surface when the theme flips without any script running.
-      return `<td class="cell" style="background:var(--seq-${i})" data-strong="${strong}" title="${esc(people.get(id))} on ${esc(a.label)}: confidence ${pct(p.confidence)}, ${p.demos} demonstration(s), best verdict ${esc(p.bestVerdict ?? 'unrecorded')}, last ${ago(p.lastAt, now)}">${pct(p.confidence)}</td>`;
+      const tip = `${people.get(id)} on ${a.label}: confidence ${pct(p.confidence)}, ${p.demos} demonstration(s), best verdict ${p.bestVerdict ?? 'unrecorded'} on "${p.bestConcept}", last ${ago(p.lastAt, now)}${p.bestPr ? `. Opens PR #${p.bestPr}.` : ''}`;
+      // The cell links to the PR behind the STRONGEST demonstration, so the number that drives
+      // the score is one click from the conversation that earned it.
+      return `<td class="cell" style="background:var(--seq-${i})" data-strong="${strong}">${
+        link(prUrl(a.repo, p.bestPr), pct(p.confidence), 'cell-link', tip)
+      }</td>`;
     }).join('');
     return `<tr><th class="rowhead">${esc(a.label)}<span class="rowhead-repo">${esc(a.repo)}</span></th>${cells}</tr>`;
   }).join('');
@@ -477,6 +507,36 @@ section { background:var(--surface); border:1px solid var(--ring); border-radius
 .dom-track { background:var(--grid); border-radius:4px; height:14px; }
 .dom-bar { background:var(--seq-7); height:14px; border-radius:4px; }
 .dom-n, .dom-c { font-variant-numeric:tabular-nums; font-size:12px; text-align:right; color:var(--ink-2); }
+
+/* links back to the source: recessive by default, obvious on hover */
+a { color:inherit; }
+.ref, .ev-pr, .sha {
+  display:inline-block; font-variant-numeric:tabular-nums; font-size:11px;
+  border:1px solid var(--ring); border-radius:4px; padding:0 6px; text-decoration:none;
+  color:var(--ink-2); background:var(--plane); white-space:nowrap;
+}
+a.ref:hover, a.ev-pr:hover, a.sha:hover { border-color:var(--seq-8); color:var(--seq-8); }
+span.ref, span.ev-pr, span.sha { opacity:0.55; } /* no URL to point at */
+.finding-refs { margin:6px 0 0; display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+.refs-label { font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--muted); border:1px solid var(--ring); border-radius:3px; padding:1px 5px; }
+.ref-more { color:var(--muted); font-size:11px; }
+.cell-link { display:block; line-height:34px; text-decoration:none; color:inherit; }
+a.cell-link:hover { text-decoration:underline; }
+
+/* evidence: the receipts behind an area's status */
+.evidence { margin-top:10px; border-top:1px solid var(--grid); padding-top:8px; }
+.evidence summary { font-size:11px; color:var(--muted); }
+.evidence ul { list-style:none; margin:8px 0 0; padding:0; display:grid; gap:6px; }
+.evidence li { display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:11px; }
+.ev-who { font-weight:600; }
+.ev-verdict { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;
+  border-radius:3px; padding:1px 5px; border:1px solid currentColor; }
+.v-strong { color:var(--good); } .v-solid { color:var(--seq-8); }
+.v-thin { color:var(--serious); } .v-none { color:var(--muted); }
+.ev-concept { color:var(--ink-2); flex:1 1 60px; min-width:0; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.ev-when { color:var(--muted); white-space:nowrap; }
 
 /* tables */
 .tbl { border-collapse:collapse; width:100%; font-size:12px; margin-top:8px; }

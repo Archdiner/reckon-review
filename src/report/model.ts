@@ -50,6 +50,25 @@ export interface PersonInArea {
   demos: number;
   lastAt: string;
   bestVerdict: string | null;
+  /** The PR behind their STRONGEST current demonstration, so the score is auditable in one
+   *  click. Null only for rows written before provenance was recorded. */
+  bestPr: number | null;
+  bestConcept: string;
+}
+
+/** One demonstration, with everything needed to link back to where it happened. */
+export interface Evidence {
+  login: string;
+  githubId: number;
+  concept: string;
+  verdict: string | null;
+  note: string | null;
+  at: string;
+  repo: string | null;
+  pr: number | null;
+  headSha: string | null;
+  /** What this single demonstration is worth today, after age and drift decay. */
+  confidence: number;
 }
 
 export interface AreaSummary {
@@ -64,6 +83,8 @@ export interface AreaSummary {
   node: AreaNode | null;
   people: PersonInArea[];
   fresh: PersonInArea[]; // people currently above the floor
+  /** Every demonstration in this area, newest first. The receipts behind the status. */
+  evidence: Evidence[];
   status: AreaStatus;
   statusLabel: string;
   statusIcon: string;
@@ -92,6 +113,21 @@ export interface Finding {
   /** What to do about it. A finding with no fix is a complaint, not a diagnosis. */
   fix: string;
   count?: number;
+  /** The specific PRs the finding is about. A count tells you something is wrong; these tell
+   *  you WHERE, which is the difference between a dashboard and a work list. Capped, with the
+   *  overflow disclosed rather than silently dropped. */
+  refs?: { label: string; repo: string; pr: number }[];
+  refsOmitted?: number;
+}
+
+/** Findings name at most this many PRs inline; the rest are counted. */
+const MAX_REFS = 12;
+
+function refsFor(rows: { repo_id: number; pr_number: number }[], names: Map<number, string>): Pick<Finding, 'refs' | 'refsOmitted'> {
+  const all = rows
+    .map((c) => ({ repo: names.get(c.repo_id) ?? '', pr: c.pr_number, label: `#${c.pr_number}` }))
+    .filter((r) => r.repo);
+  return { refs: all.slice(0, MAX_REFS), refsOmitted: Math.max(0, all.length - MAX_REFS) };
 }
 
 // ── Funnel ─────────────────────────────────────────────────────────────────────────────────
@@ -245,6 +281,8 @@ export function knowledgeMap(s: Snapshot, now = new Date()): AreaSummary[] {
         demos: rows.length,
         lastAt: rows.map((r) => r.demonstrated_at).sort().at(-1)!,
         bestVerdict: best.d.verdict,
+        bestPr: best.d.pr_number ?? null,
+        bestConcept: best.d.concept,
       });
     }
     people.sort((a, b) => b.confidence - a.confidence);
@@ -252,8 +290,25 @@ export function knowledgeMap(s: Snapshot, now = new Date()): AreaSummary[] {
     const status = areaStatus(fresh.length, demos.length);
     const meta = AREA_STATUS_META[status];
 
+    // The receipts: every demonstration in this area with its provenance, newest first, each
+    // scored the same way the rollup scores it so a reader can see WHY the area sits where it does.
+    const evidence: Evidence[] = demos
+      .map((d) => ({
+        login: logins.get(d.github_id) ?? d.github_login ?? `user ${d.github_id}`,
+        githubId: d.github_id,
+        concept: d.concept,
+        verdict: d.verdict,
+        note: d.note,
+        at: d.demonstrated_at,
+        repo: d.repo_full_name,
+        pr: d.pr_number,
+        headSha: d.head_sha ?? null,
+        confidence: confidenceOf(d.verdict, daysBetween(d.demonstrated_at, now), changeTimes.filter((t) => t > d.demonstrated_at).length),
+      }))
+      .sort((a, b) => (a.at < b.at ? 1 : -1));
+
     out.push({
-      repo, key: area, label: areaLabel(area, labels.get(repo) ?? {}),
+      repo, key: area, label: areaLabel(area, labels.get(repo) ?? {}), evidence,
       node: nodesByKey.get(key) ?? null,
       changes: changeTimes.length,
       changes30d: changeTimes.filter((t) => t >= thirtyDaysAgo).length,
@@ -383,6 +438,7 @@ export function health(s: Snapshot, now = new Date()): Finding[] {
       severity: 'warning',
       title: 'Checkpoints with no area tag',
       count: untagged.length,
+      ...refsFor(untagged, repoNames),
       detail: 'Substantive checkpoints carrying no areas. Expected for anything recorded before area tagging shipped; these contribute no drift and appear nowhere on the map.',
       fix: 'Backfillable: areas derive from files, so any row that has files can be recomputed with areasFor(). Rows with neither are lost.',
     });
@@ -422,6 +478,7 @@ export function health(s: Snapshot, now = new Date()): Finding[] {
       severity: 'critical',
       title: 'Passing explanations on gates that never opened',
       count: wedged.length,
+      ...refsFor(wedged.map((a) => cpById.get(a.checkpoint_id)!).filter(Boolean), repoNames),
       detail: `${wedged.length} attempt(s) graded PASS while their checkpoint is still not 'passed'. Someone explained the change correctly and stayed blocked.`,
       fix: 'The pass path (checkpoint flip, closeout, comment) threw partway. Check the process logs around those timestamps.',
     });
@@ -437,6 +494,7 @@ export function health(s: Snapshot, now = new Date()): Finding[] {
       severity: 'critical',
       title: 'Passed gates with no explanation recorded',
       count: passedNoAttempt.length,
+      ...refsFor(passedNoAttempt, repoNames),
       detail: `${passedNoAttempt.length} gate(s) flipped to passed with no attempt row. A gate cannot pass without an explanation, so the explanation was graded and then lost.`,
       fix: 'recordAttempt failed while the pass path continued. Losing these also breaks cumulative grading on any gate still open, since prior rounds are read back from this table.',
     });
@@ -450,6 +508,7 @@ export function health(s: Snapshot, now = new Date()): Finding[] {
       severity: 'serious',
       title: 'Passed gates with no demonstrations',
       count: passedNoDemos.length,
+      ...refsFor(passedNoDemos, repoNames),
       detail: `${passedNoDemos.length} of ${s.checkpoints.filter((c) => c.status === 'passed').length} passed gates wrote no durable record. That understanding is not on anyone's map.`,
       fix: 'The durable-record write is best-effort and swallowed. Most likely the demonstrations table or one of its columns was absent at the time.',
     });
@@ -464,6 +523,7 @@ export function health(s: Snapshot, now = new Date()): Finding[] {
       severity: noCloseout.length === passed.length && passed.length > 0 ? 'serious' : 'warning',
       title: 'Passed gates with no closeout',
       count: noCloseout.length,
+      ...refsFor(noCloseout, repoNames),
       detail: `${noCloseout.length} of ${passed.length} passed gates have no per-topic read, so those demonstrations carry no verdict and score at the neutral default rather than strong/solid/thin.`,
       fix: 'Either the closeout column was missing, or the closeout model call failed or returned unparseable JSON.',
     });
@@ -489,6 +549,7 @@ export function health(s: Snapshot, now = new Date()): Finding[] {
       severity: 'warning',
       title: 'Gates open over a week with no reply',
       count: abandoned.length,
+      ...refsFor(abandoned, repoNames),
       detail: 'Opened, commented on, and never answered. Either the PR was abandoned, or the gate is being routed around.',
       fix: 'Not a data bug. Worth checking whether those PRs merged anyway, which would mean the ruleset is not enforcing.',
     });
@@ -501,6 +562,7 @@ export function health(s: Snapshot, now = new Date()): Finding[] {
       severity: 'serious',
       title: 'Gates opened with zero decisions',
       count: emptyDecisions.length,
+      ...refsFor(emptyDecisions, repoNames),
       detail: 'decompose returned nothing, so the elicit comment listed no topics and the grader had no ground truth to score against.',
       fix: 'Check the decompose backend for errors or truncation on those PRs.',
     });

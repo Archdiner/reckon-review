@@ -125,8 +125,10 @@ Changed decisions → re-gate. Closes the "pass then push slop" hole.
   (visualization)    self-contained HTML file: collection health, usage funnel, the ARCHITECTURE
                      DIAGRAM (from the persisted area graph, coloured by comprehension), the area
                      map, a person x area matrix, domain profiles. layout.ts is a deterministic
-                     force layout (no Math.random, so the same codebase draws the same). `npm run
-                     report`, or `npm run report:demo`. Never writes.
+                     force layout (no Math.random, so the same codebase draws the same);
+                     links.ts turns stored provenance into GitHub URLs so every score, every
+                     demonstration and every finding opens the PR behind it. `npm run report`,
+                     or `npm run report:demo`. Never writes.
 ```
 
 Everything off the merge path (closeout, durable record, graph) is **best-effort**: any failure
