@@ -9,7 +9,7 @@
  * underneath it, so nothing here depends on distinguishing hues.
  */
 import { FRESH_FLOOR } from '../knowledge/freshness.js';
-import { edgePoint, layout, type LayoutNode, type Placed } from './layout.js';
+import { layout, type LayoutNode } from './layout.js';
 import { commitUrl, prUrl } from './links.js';
 import type { Architecture, AreaSummary, DomainProfile, Finding, ReportModel, Severity } from './model.js';
 
@@ -162,9 +162,15 @@ function renderAreaMap(areas: AreaSummary[], now: Date): string {
     areas.map((a) => `<tr><td>${esc(a.repo)}</td><td>${esc(a.label)}</td><td>${a.statusIcon} ${esc(a.statusLabel)}</td><td class="num">${pct(a.teamConfidence)}</td><td class="num">${a.fresh.length}</td><td class="num">${a.demos}</td><td class="num">${a.changes}</td><td>${ago(a.lastDemoAt, now)}</td><td>${ago(a.lastChangeAt, now)}</td></tr>`).join('')
   }</tbody></table></details>`;
 
+  // Demoted to a collapsed list. The diagram plus its panel now answers the same questions with
+  // the dependency context attached, so a wall of 16 cards competing with it was noise. It stays
+  // because it is the no-script, no-colour fallback and the only place every area is legible at
+  // once, but it is no longer what the reader meets first.
   return `<section id="map">
-    <h2>Knowledge map: which parts are demonstrably understood</h2>
-    <p class="lede">One card per subsystem, worst first. The bar is the strongest current understanding anyone holds, after decay; the notch is the floor below which we stop counting it. "Unexplained" means the area has been changed and never explained by anyone, which is the real gap.</p>
+    <h2>All subsystems, as a list</h2>
+    <p class="lede">The same data as the diagram, flattened and sorted worst first. The bar is the strongest current understanding anyone holds, after decay; the notch is the floor below which we stop counting it.</p>
+    <details class="list-view">
+    <summary>${areas.length} subsystem${areas.length === 1 ? '' : 's'} across ${new Set(areas.map((a) => a.repo)).size} repo${new Set(areas.map((a) => a.repo)).size === 1 ? '' : 's'}</summary>
     <div class="legend">${['covered', 'single-point', 'stale', 'unexplained'].map((k) => {
       const s = areas.find((a) => a.status === k);
       const meta = { covered: ['●', 'good', 'Covered', 'two or more people hold current understanding'], 'single-point': ['▲', 'warning', 'Single point', 'exactly one person holds it'], stale: ['◆', 'serious', 'Stale', 'explained before, but time passed or the code moved'], unexplained: ['■', 'critical', 'Unexplained', 'changed here, never explained'] }[k]!;
@@ -172,81 +178,193 @@ function renderAreaMap(areas: AreaSummary[], now: Date): string {
     }).join('')}</div>
     <div class="cards">${cards}</div>
     ${table}
+    </details>
   </section>`;
 }
 
 
 /**
- * THE ARCHITECTURE DIAGRAM, drawn from the codebase graph we already build on every gate and
- * used to throw away, with the knowledge map laid over it.
+ * THE ARCHITECTURE DIAGRAM: the codebase graph we already build on every gate, laid out as a
+ * dependency stack with the knowledge map painted onto it.
  *
- * This is the picture the card grid could not be. A grid can say "Persistence is stale"; only the
- * diagram can say "Persistence is stale AND four other subsystems depend on it". Boxes are
- * subsystems, edges are real reference dependencies extracted from the code, box size is how much
- * of the codebase the subsystem is, and box colour is comprehension status.
+ * This is the page's headline, not an appendix, so it renders first and gets the real estate.
+ * A list can say "Persistence is stale". Only this can say "Persistence is stale AND five other
+ * subsystems sit on top of it", which is the sentence that makes someone act.
  *
- * Composite encoding on purpose: status is colour AND an icon AND a word, so nothing here rests
- * on telling two hues apart, and the same table view sits underneath.
+ * Reading order is built into the layout: layer 0 is the bottom, so every arrow points DOWN into
+ * what it depends on, and the foundations of the codebase are literally the foundation of the
+ * picture. Box colour is comprehension status, box size is how much of the codebase it is, and
+ * edge weight is how many symbols cross the boundary.
+ *
+ * Interaction is the point. A static 20-node graph is unreadable no matter how it is laid out,
+ * so: hover isolates a subsystem and its immediate neighbours, click pins that and opens a panel
+ * with the receipts, and the legend doubles as a filter. All of it is progressive enhancement,
+ * plain CSS classes toggled by a small inline script; with scripting off the full graph and the
+ * table view are both still there.
+ *
+ * Composite encoding throughout: status is colour AND an icon AND a word, so nothing depends on
+ * telling two hues apart.
  */
-function renderDiagram(arch: Architecture, areas: AreaSummary[], now: Date): string {
+function pathFor(points: { x: number; y: number }[]): string {
+  if (points.length < 2) return '';
+  if (points.length === 2) {
+    // A direct edge: a vertical-tangent cubic, so it leaves and arrives square to the boxes
+    // rather than at an angle that reads as pointing somewhere else.
+    const [a, b] = points;
+    const dy = Math.max(18, (b.y - a.y) * 0.45);
+    return `M${a.x},${a.y} C${a.x},${a.y + dy} ${b.x},${b.y - dy} ${b.x},${b.y}`;
+  }
+  // A routed edge: smooth through its waypoints (Catmull-Rom converted to cubics) so a long
+  // dependency curves cleanly around the layers it skips.
+  let d = `M${points[0].x},${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+    const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
+    const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+    d += ` C${c1.x.toFixed(1)},${c1.y.toFixed(1)} ${c2.x.toFixed(1)},${c2.y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+function renderDiagram(arch: Architecture, areas: AreaSummary[], now: Date, idx: number): string {
   const byKey = new Map(areas.filter((a) => a.repo === arch.repo).map((a) => [a.key, a]));
-  const maxFiles = Math.max(1, ...arch.nodes.map((n) => n.files));
+  const uid = `arch${idx}`;
+  const maxRank = Math.max(1e-9, ...arch.nodes.map((n) => n.rank));
+
+  const labelOf = (k: string): string => byKey.get(k)?.label ?? k;
 
   const nodes: LayoutNode[] = arch.nodes.map((n) => {
-    const a = byKey.get(n.area);
-    const label = a?.label ?? n.area;
-    // Width follows the label so text never overflows its box; height follows size, so a big
-    // subsystem reads as big without the label shrinking with it.
-    const w = Math.min(210, Math.max(112, label.length * 7.4 + 40));
-    const h = 46 + Math.round((n.files / maxFiles) * 26);
-    return { id: n.area, w, h, weight: n.rank };
+    const label = labelOf(n.area);
+    // Width follows the label so text never overflows. Height follows importance, so the
+    // load-bearing subsystems are visibly bigger without the type shrinking with them.
+    const w = Math.min(186, Math.max(116, label.length * 7.0 + 30));
+    const h = 48 + Math.round((n.rank / maxRank) * 20);
+    return { id: n.area, w, h };
   });
   const L = layout(nodes, arch.edges);
-  const placed = new Map<string, Placed>(L.nodes.map((p) => [p.id, p]));
+  const placed = new Map(L.nodes.map((p) => [p.id, p]));
   const maxW = Math.max(1, ...arch.edges.map((e) => e.weight));
 
-  const edgeSvg = arch.edges.map((e) => {
-    const a = placed.get(e.from), b = placed.get(e.to);
-    if (!a || !b) return '';
-    const p1 = edgePoint(b, a, 2); // leaves the source box
-    const p2 = edgePoint(a, b, 2); // arrives at the target box
+  const edgeSvg = L.edges.map((e) => {
     const strength = e.weight / maxW;
-    return `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" class="dep"
-      stroke-width="${(1.2 + strength * 2.2).toFixed(2)}" opacity="${(0.45 + strength * 0.4).toFixed(2)}"
-      marker-end="url(#arrow)"><title>${esc(byKey.get(e.from)?.label ?? e.from)} references ${esc(byKey.get(e.to)?.label ?? e.to)} (${e.weight} symbol${e.weight === 1 ? '' : 's'})</title></line>`;
+    const tip = `${labelOf(e.from)} depends on ${labelOf(e.to)} (${e.weight} symbol${e.weight === 1 ? '' : 's'})${e.cyclic ? ', part of an import cycle' : ''}`;
+    return `<path d="${pathFor(e.points)}" class="dep${e.cyclic ? ' dep-cyclic' : ''}"
+      data-from="${esc(e.from)}" data-to="${esc(e.to)}"
+      stroke-width="${(1.1 + strength * 2.6).toFixed(2)}"
+      marker-end="url(#${uid}-arrow)"><title>${esc(tip)}</title></path>`;
   }).join('');
 
   const nodeSvg = arch.nodes.map((n) => {
     const p = placed.get(n.area)!;
     const a = byKey.get(n.area);
-    const label = a?.label ?? n.area;
+    const label = labelOf(n.area);
     const tone = a?.statusTone ?? 'critical';
-    const icon = a?.statusIcon ?? '\u25a0';
-    const holders = a?.fresh.map((f) => f.login).join(', ') || 'nobody currently';
-    const tip = [
-      `${label} (${arch.repo})`,
-      `${a?.statusLabel ?? 'Unexplained'}: ${holders}`,
-      `${n.files} file(s), ${n.defs} symbol(s), referenced by ${n.fanIn} file(s) outside it`,
-      `${a?.changes ?? 0} substantive change(s), last explained ${ago(a?.lastDemoAt, now)}`,
-    ].join('\n');
-    return `<g class="node tone-${tone}" transform="translate(${p.x - p.w / 2},${p.y - p.h / 2})">
-      <title>${esc(tip)}</title>
-      <rect width="${p.w}" height="${p.h}" rx="7" class="node-box"/>
-      <rect width="${p.w}" height="3" rx="1.5" class="node-bar"/>
-      <text x="${p.w / 2}" y="${p.h / 2 - 1}" class="node-label">${esc(label)}</text>
-      <text x="${p.w / 2}" y="${p.h / 2 + 13}" class="node-sub">${icon} ${esc(a?.statusLabel ?? 'Unexplained')}</text>
+    const holders = a?.fresh.length ? a.fresh.map((f) => f.login).join(', ') : 'nobody currently';
+    return `<g class="gnode tone-${tone}" data-id="${esc(n.area)}" tabindex="0" role="button"
+        aria-label="${esc(`${label}: ${a?.statusLabel ?? 'Unexplained'}, held by ${holders}`)}"
+        transform="translate(${p.x - p.w / 2},${p.y - p.h / 2})">
+      <rect class="gnode-box" width="${p.w}" height="${p.h}" rx="9"/>
+      <rect class="gnode-accent" width="4" height="${p.h}" rx="2"/>
+      <text class="gnode-label" x="${p.w / 2}" y="${p.h / 2 - 3}">${esc(label)}</text>
+      <text class="gnode-sub" x="${p.w / 2}" y="${p.h / 2 + 14}">${a?.statusIcon ?? '■'} ${esc(a?.statusLabel ?? 'Unexplained')}</text>
     </g>`;
   }).join('');
 
-  return `<figure class="diagram">
-    <figcaption>${esc(arch.repo)} <span class="diag-meta">${arch.nodes.length} subsystems, ${arch.edges.length} dependencies, from the graph built at ${link(commitUrl(arch.repo, arch.headSha), arch.headSha.slice(0, 7), 'sha', `open commit ${arch.headSha.slice(0, 7)}`)}</span></figcaption>
-    <div class="scroll-x"><svg viewBox="0 0 ${L.width} ${L.height}" width="${L.width}" height="${L.height}" role="img"
-      aria-label="Architecture of ${esc(arch.repo)}: ${arch.nodes.length} subsystems coloured by comprehension status">
-      <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-        <path d="M 0 0 L 10 5 L 0 10 z" class="dep-head"/></marker></defs>
-      <g>${edgeSvg}</g><g>${nodeSvg}</g>
-    </svg></div>
-    <p class="diag-note">Arrows point from a subsystem to what it depends on, weighted by how many symbols cross the boundary. Box size is how much of the codebase the subsystem is. Edges are name-based, so they are a lower bound on real coupling, never a ceiling.${
+  // Detail panels are pre-rendered and hidden, so the script only toggles a class. Nothing is
+  // built from strings at runtime, which keeps every value escaped here at render time.
+  const panels = arch.nodes.map((n) => {
+    const a = byKey.get(n.area);
+    const dependsOn = arch.edges.filter((e) => e.from === n.area).sort((x, y) => y.weight - x.weight);
+    const usedBy = arch.edges.filter((e) => e.to === n.area).sort((x, y) => y.weight - x.weight);
+    const chips = (list: typeof dependsOn, dir: 'to' | 'from'): string =>
+      list.length
+        ? list.map((e) => `<button class="nav-chip" data-goto="${esc(dir === 'to' ? e.to : e.from)}">${esc(labelOf(dir === 'to' ? e.to : e.from))}<span>${e.weight}</span></button>`).join('')
+        : '<span class="empty">none</span>';
+
+    return `<div class="panel-body" data-panel="${esc(n.area)}" hidden>
+      <header class="tone-${a?.statusTone ?? 'critical'}">
+        <h4>${esc(labelOf(n.area))}</h4>
+        <span class="panel-status">${a?.statusIcon ?? '■'} ${esc(a?.statusLabel ?? 'Unexplained')}</span>
+      </header>
+      <dl class="panel-stats">
+        <div><dt>Holds it now</dt><dd>${a?.fresh.length ? a.fresh.map((f) => esc(f.login)).join(', ') : '<span class="empty">nobody</span>'}</dd></div>
+        <div><dt>Size</dt><dd>${n.files} file${n.files === 1 ? '' : 's'}, ${n.defs} symbol${n.defs === 1 ? '' : 's'}</dd></div>
+        <div><dt>Depended on by</dt><dd>${n.fanIn} file${n.fanIn === 1 ? '' : 's'} outside it</dd></div>
+        <div><dt>Changes</dt><dd>${a?.changes ?? 0} total, ${a?.changes30d ?? 0} in 30d</dd></div>
+        <div><dt>Last explained</dt><dd>${ago(a?.lastDemoAt, now)}</dd></div>
+      </dl>
+      <div class="panel-nav">
+        <div><span class="nav-label">Depends on</span><div class="chips">${chips(dependsOn, 'to')}</div></div>
+        <div><span class="nav-label">Used by</span><div class="chips">${chips(usedBy, 'from')}</div></div>
+      </div>
+      ${a?.evidence.length ? `<div class="panel-ev"><span class="nav-label">Demonstrations</span><ul>${
+        a.evidence.map((e) => `<li>
+          <span class="ev-who">${esc(e.login)}</span>
+          <span class="ev-verdict v-${esc(e.verdict ?? 'none')}">${esc(e.verdict ?? 'unverdicted')}</span>
+          <span class="ev-concept" title="${esc(e.note || e.concept)}">${esc(e.concept)}</span>
+          <span class="ev-when">${ago(e.at, now)}</span>
+          ${link(prUrl(e.repo, e.pr), e.pr ? `#${e.pr}` : 'no PR', 'ev-pr', e.pr ? `open ${e.repo}#${e.pr}` : 'predates provenance recording')}
+        </li>`).join('')}</ul></div>`
+        : `<p class="panel-none">Nobody has explained this subsystem. ${n.fanIn > 0 ? `${n.fanIn} file${n.fanIn === 1 ? '' : 's'} outside it depend${n.fanIn === 1 ? 's' : ''} on it.` : ''}</p>`}
+    </div>`;
+  }).join('');
+
+  // The counts the legend filters by, so a filter with nothing behind it reads as empty rather
+  // than looking broken.
+  const counts = { covered: 0, 'single-point': 0, stale: 0, unexplained: 0 } as Record<string, number>;
+  for (const n of arch.nodes) counts[byKey.get(n.area)?.status ?? 'unexplained']++;
+  const LEGEND: [string, string, string, string][] = [
+    ['unexplained', 'critical', '■', 'Unexplained'],
+    ['stale', 'serious', '◆', 'Stale'],
+    ['single-point', 'warning', '▲', 'Single point'],
+    ['covered', 'good', '●', 'Covered'],
+  ];
+
+  return `<figure class="diagram" id="${uid}">
+    <figcaption>
+      <span class="diag-repo">${esc(arch.repo)}</span>
+      <span class="diag-meta">${arch.nodes.length} subsystems, ${arch.edges.length} dependencies, ${L.layers} layers deep, from the graph built at ${link(commitUrl(arch.repo, arch.headSha), arch.headSha.slice(0, 7), 'sha', `open commit ${arch.headSha.slice(0, 7)}`)}</span>
+    </figcaption>
+
+    <div class="diag-toolbar">
+      <div class="filters" role="group" aria-label="Filter subsystems by comprehension status">
+        ${LEGEND.map(([key, tone, icon, label]) => `<button class="filter tone-${tone}" data-filter="${key}" aria-pressed="false" ${counts[key] ? '' : 'disabled'}>
+          <span class="filter-mark" aria-hidden="true">${icon}</span>${label}<span class="filter-n">${counts[key]}</span>
+        </button>`).join('')}
+      </div>
+      <div class="zoom" role="group" aria-label="Zoom">
+        <button data-zoom="out" aria-label="Zoom out">&minus;</button>
+        <button data-zoom="fit" aria-label="Fit to width">Fit</button>
+        <button data-zoom="in" aria-label="Zoom in">+</button>
+      </div>
+    </div>
+
+    <div class="diag-body">
+      <div class="diag-canvas" tabindex="0">
+        <svg viewBox="0 0 ${L.width} ${L.height}" width="${L.width}" height="${L.height}" role="img"
+          aria-label="Dependency stack of ${esc(arch.repo)}: ${arch.nodes.length} subsystems, coloured by comprehension status. Arrows point downward from a subsystem to what it depends on.">
+          <defs>
+            <marker id="${uid}-arrow" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" class="dep-head"/>
+            </marker>
+          </defs>
+          <g class="edges">${edgeSvg}</g>
+          <g class="nodes">${nodeSvg}</g>
+        </svg>
+      </div>
+      <aside class="diag-panel">
+        <div class="panel-hint">
+          <strong>Hover</strong> a subsystem to isolate it and what it touches.<br>
+          <strong>Click</strong> to pin it and see who understands it.
+        </div>
+        ${panels}
+      </aside>
+    </div>
+
+    <p class="diag-note">Arrows point down, from a subsystem to what it depends on, so the bottom row is what the rest of the codebase rests on. Box height is how load-bearing the subsystem is; edge thickness is how many symbols cross the boundary. Dashed edges are part of an import cycle. Edges are name-based, so coupling is a lower bound, never a ceiling.${
       arch.truncated ? ' The graph was built over a bounded subset of this repo, so it is partial.' : ''
     }${arch.omitted ? ` ${arch.omitted} smaller subsystem(s) are not drawn.` : ''}</p>
   </figure>`;
@@ -256,12 +374,26 @@ function renderArchitecture(m: ReportModel, now: Date): string {
   if (!m.architectures.length) {
     return `<section id="arch"><h2>Architecture</h2><p class="empty">No codebase graph has been persisted yet. It is captured on the next gate that builds one, which needs a repo in a language the extractor supports (TypeScript and JavaScript today).</p></section>`;
   }
+
+  // The headline: the single fact worth acting on, stated before the picture rather than left for
+  // the reader to find in it. A load-bearing subsystem nobody can explain is the whole point.
+  const risky = m.areas
+    .filter((a) => a.status === 'unexplained' && (a.node?.fanIn ?? 0) > 0)
+    .sort((a, b) => (b.node?.fanIn ?? 0) - (a.node?.fanIn ?? 0));
+  const headline = risky.length
+    ? `<p class="headline"><strong>${risky.length} load-bearing subsystem${risky.length === 1 ? '' : 's'} nobody has explained.</strong> Worst first: ${
+        risky.slice(0, 3).map((a) => `${esc(a.label)} (${a.node!.fanIn} file${a.node!.fanIn === 1 ? '' : 's'} depend on it)`).join(', ')
+      }.</p>`
+    : `<p class="headline good"><strong>Every subsystem other files depend on has been explained by someone.</strong></p>`;
+
   return `<section id="arch">
     <h2>Architecture, coloured by who understands it</h2>
-    <p class="lede">Not hand-drawn. This is the def/ref graph Reckon already builds on every gate, rolled up from files to subsystems and kept. The shape comes from the code; the colour comes from the demonstrations. An unexplained box with many arrows into it is the thing to fix first.</p>
-    ${m.architectures.map((a) => renderDiagram(a, m.areas, now)).join('')}
+    <p class="lede">Not hand-drawn. This is the def/ref graph Reckon builds on every gate, rolled up from files to subsystems. The shape comes from the code; the colour comes from the demonstrations.</p>
+    ${headline}
+    ${m.architectures.map((a, i) => renderDiagram(a, m.areas, now, i)).join('')}
   </section>`;
 }
+
 
 function renderMatrix(areas: AreaSummary[], now: Date): string {
   const people = new Map<number, string>();
@@ -363,6 +495,8 @@ export function renderReport(m: ReportModel): string {
   --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
   --step-0:#86b6ef; --step-1:#5598e7; --step-2:#2a78d6; --step-3:#1c5cab;
   --cell-ink:#0b0b0b; --cell-ink-strong:#ffffff;
+  --tint-good:#eef7ee; --tint-warning:#fdf5e4; --tint-serious:#fdf0ea; --tint-critical:#fbeeee;
+  --line-good:#9dd39d; --line-warning:#e7cd8c; --line-serious:#f0b79c; --line-critical:#e8a3a3;
   ${seqVars(SEQ_LIGHT)}
 }
 @media (prefers-color-scheme: dark) {
@@ -373,6 +507,8 @@ export function renderReport(m: ReportModel): string {
     --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
     --step-0:#9ec5f4; --step-1:#6da7ec; --step-2:#3987e5; --step-3:#256abf;
     --cell-ink:#ffffff; --cell-ink-strong:#0b0b0b;
+    --tint-good:#13230f; --tint-warning:#2a2312; --tint-serious:#2b1d15; --tint-critical:#2a1616;
+    --line-good:#2f6b2f; --line-warning:#7a642a; --line-serious:#8a5741; --line-critical:#7f3b3b;
     ${seqVars(SEQ_DARK)}
   }
 }
@@ -383,12 +519,14 @@ export function renderReport(m: ReportModel): string {
   --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
   --step-0:#9ec5f4; --step-1:#6da7ec; --step-2:#3987e5; --step-3:#256abf;
   --cell-ink:#ffffff; --cell-ink-strong:#0b0b0b;
+  --tint-good:#13230f; --tint-warning:#2a2312; --tint-serious:#2b1d15; --tint-critical:#2a1616;
+  --line-good:#2f6b2f; --line-warning:#7a642a; --line-serious:#8a5741; --line-critical:#7f3b3b;
   ${seqVars(SEQ_DARK)}
 }
 * { box-sizing:border-box; }
 body { margin:0; background:var(--plane); color:var(--ink);
   font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
-.wrap { max-width:1120px; margin:0 auto; padding:32px 20px 80px; }
+.wrap { max-width:1280px; margin:0 auto; padding:32px 20px 80px; }
 h1 { font-size:26px; margin:0 0 4px; letter-spacing:-0.01em; }
 h2 { font-size:19px; margin:0 0 6px; letter-spacing:-0.01em; }
 h3 { font-size:14px; margin:0; }
@@ -408,8 +546,10 @@ section { background:var(--surface); border:1px solid var(--ring); border-radius
 .foot { color:var(--muted); font-size:12px; margin:12px 0 0; }
 
 /* status tones: colour is always paired with an icon and a word */
-.tone-good { --tone:var(--good); } .tone-warning { --tone:var(--warning); }
-.tone-serious { --tone:var(--serious); } .tone-critical { --tone:var(--critical); }
+.tone-good { --tone:var(--good); --tone-tint:var(--tint-good); --tone-line:var(--line-good); }
+.tone-warning { --tone:var(--warning); --tone-tint:var(--tint-warning); --tone-line:var(--line-warning); }
+.tone-serious { --tone:var(--serious); --tone-tint:var(--tint-serious); --tone-line:var(--line-serious); }
+.tone-critical { --tone:var(--critical); --tone-tint:var(--tint-critical); --tone-line:var(--line-critical); }
 .sev-critical { --tone:var(--critical); } .sev-serious { --tone:var(--serious); }
 .sev-warning { --tone:var(--warning); } .sev-ok { --tone:var(--good); }
 
@@ -442,21 +582,95 @@ section { background:var(--surface); border:1px solid var(--ring); border-radius
 .fun-rate { color:var(--muted); font-size:12px; }
 .fun-rate .warn { color:var(--serious); }
 
-/* architecture diagram */
-.diagram { margin:0 0 22px; }
-.diagram figcaption { font-size:13px; font-weight:600; margin-bottom:10px; }
-.diag-meta { font-weight:400; color:var(--muted); font-size:12px; }
-.diagram code { font-size:11px; background:var(--grid); border-radius:3px; padding:1px 4px; }
-.diagram svg { display:block; max-width:100%; height:auto; }
-.dep { stroke:var(--muted); fill:none; }
+/* ── architecture diagram ─────────────────────────────────────────────────────────────── */
+.headline { border:1px solid var(--ring); border-left:4px solid var(--critical); border-radius:6px;
+  padding:10px 14px; margin:0 0 16px; font-size:13px; color:var(--ink-2); }
+.headline strong { color:var(--ink); }
+.headline.good { border-left-color:var(--good); }
+
+.diagram { margin:0 0 8px; }
+.diagram figcaption { display:flex; flex-wrap:wrap; align-items:baseline; gap:10px; margin-bottom:10px; }
+.diag-repo { font-size:13px; font-weight:600; }
+.diag-meta { color:var(--muted); font-size:12px; }
+
+.diag-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+  justify-content:space-between; margin-bottom:10px; }
+.filters { display:flex; flex-wrap:wrap; gap:6px; }
+.filter, .zoom button { font:inherit; font-size:11.5px; cursor:pointer; background:var(--surface);
+  color:var(--ink-2); border:1px solid var(--ring); border-radius:99px; padding:4px 11px;
+  display:inline-flex; align-items:center; gap:6px; }
+.filter-mark { color:var(--tone); }
+.filter-n { font-variant-numeric:tabular-nums; color:var(--muted); font-size:10.5px; }
+.filter:hover:not(:disabled) { border-color:var(--tone); }
+.filter[aria-pressed="true"] { border-color:var(--tone); color:var(--ink);
+  box-shadow:inset 0 0 0 1px var(--tone); }
+.filter:disabled { opacity:0.4; cursor:default; }
+.zoom { display:flex; gap:4px; }
+.zoom button { border-radius:6px; padding:4px 10px; min-width:32px; justify-content:center; }
+.zoom button:hover { border-color:var(--ink-2); color:var(--ink); }
+
+.diag-body { display:grid; grid-template-columns:minmax(0,1fr) 264px; gap:14px; align-items:start; }
+.diag-canvas { overflow:auto; border:1px solid var(--ring); border-radius:8px;
+  background:var(--plane); max-height:640px; }
+.diag-canvas:focus-visible { outline:2px solid var(--seq-8); outline-offset:2px; }
+.diag-canvas svg { display:block; transform-origin:0 0; }
+
+/* Focus mode: dim everything, then light up the selection and its immediate neighbours. The
+   whole interaction is class toggles, so it degrades to a plain full graph without script. */
+.diagram.is-focused .gnode { opacity:0.18; }
+.diagram.is-focused .dep { opacity:0.06; }
+.diagram.is-focused .gnode.hi { opacity:1; }
+.diagram.is-focused .gnode.hi-near { opacity:0.92; }
+.diagram.is-focused .dep.hi { opacity:1; }
+.diagram.is-filtered .gnode.out { opacity:0.12; }
+.diagram.is-filtered .dep.out { opacity:0.05; }
+
+.gnode { cursor:pointer; }
+.gnode-box { fill:var(--tone-tint); stroke:var(--tone-line); stroke-width:1.25; }
+.gnode-accent { fill:var(--tone); }
+.gnode-label { fill:var(--ink); font-size:12.5px; font-weight:600; text-anchor:middle; }
+.gnode-sub { fill:var(--tone); font-size:9.5px; font-weight:700; text-anchor:middle;
+  letter-spacing:0.05em; text-transform:uppercase; }
+.gnode:hover .gnode-box, .gnode:focus-visible .gnode-box,
+.gnode.hi .gnode-box { stroke:var(--tone); stroke-width:2.25; }
+.gnode:focus-visible { outline:none; }
+.gnode.sel .gnode-box { stroke:var(--tone); stroke-width:2.75; }
+
+.dep { stroke:var(--muted); fill:none; opacity:0.55; transition:opacity .12s ease; }
+.dep-cyclic { stroke-dasharray:5 4; }
 .dep-head { fill:var(--muted); }
-.node-box { fill:var(--surface); stroke:var(--ring); stroke-width:1; }
-.node-bar { fill:var(--tone); }
-.node:hover .node-box { stroke:var(--tone); stroke-width:2; }
-.node-label { fill:var(--ink); font-size:12.5px; font-weight:600; text-anchor:middle; }
-.node-sub { fill:var(--tone); font-size:10px; font-weight:600; text-anchor:middle;
-  letter-spacing:0.04em; text-transform:uppercase; }
-.diag-note { color:var(--muted); font-size:11.5px; margin:8px 0 0; max-width:82ch; }
+.dep.hi { stroke:var(--ink-2); }
+
+.diag-panel { border:1px solid var(--ring); border-radius:8px; padding:14px; min-height:220px;
+  position:sticky; top:14px; }
+.panel-hint { color:var(--muted); font-size:12px; line-height:1.7; }
+.panel-hint strong { color:var(--ink-2); }
+.panel-body header { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px;
+  border-bottom:1px solid var(--grid); padding-bottom:8px; margin-bottom:10px; }
+.panel-body h4 { margin:0; font-size:14px; }
+.panel-status { color:var(--tone); font-size:10px; font-weight:700; letter-spacing:0.06em;
+  text-transform:uppercase; margin-left:auto; }
+.panel-stats { margin:0 0 12px; display:grid; gap:4px; }
+.panel-stats > div { display:flex; gap:8px; font-size:11.5px; }
+.panel-stats dt { color:var(--muted); min-width:106px; flex:none; }
+.panel-stats dd { margin:0; color:var(--ink-2); }
+.panel-nav { display:grid; gap:9px; margin-bottom:12px; }
+.nav-label { display:block; font-size:9.5px; font-weight:700; letter-spacing:0.08em;
+  text-transform:uppercase; color:var(--muted); margin-bottom:5px; }
+.chips { display:flex; flex-wrap:wrap; gap:4px; }
+.nav-chip { font:inherit; font-size:11px; cursor:pointer; background:var(--plane); color:var(--ink-2);
+  border:1px solid var(--ring); border-radius:5px; padding:2px 7px; display:inline-flex; gap:5px; }
+.nav-chip:hover { border-color:var(--seq-8); color:var(--seq-8); }
+.nav-chip span { color:var(--muted); font-variant-numeric:tabular-nums; }
+.panel-ev ul { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.panel-ev li { display:flex; flex-wrap:wrap; gap:5px; align-items:center; font-size:11px; }
+.panel-none { color:var(--muted); font-size:11.5px; margin:0; }
+.diag-note { color:var(--muted); font-size:11.5px; margin:10px 0 0; max-width:88ch; }
+
+@media (max-width:820px) {
+  .diag-body { grid-template-columns:minmax(0,1fr); }
+  .diag-panel { position:static; }
+}
 
 /* area cards */
 .legend { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:6px 18px; margin-bottom:16px; }
@@ -545,6 +759,8 @@ a.cell-link:hover { text-decoration:underline; }
 .tbl th { color:var(--muted); font-weight:500; }
 .tbl .num { text-align:right; font-variant-numeric:tabular-nums; }
 details { margin-top:10px; } summary { cursor:pointer; color:var(--ink-2); font-size:13px; }
+.list-view > summary { padding:8px 0; }
+.list-view[open] > summary { margin-bottom:10px; border-bottom:1px solid var(--grid); }
 [title] { cursor:help; }
 @media (max-width:640px) {
   .fun-row { grid-template-columns:88px 1fr 44px; } .fun-rate { display:none; }
@@ -556,14 +772,156 @@ details { margin-top:10px; } summary { cursor:pointer; color:var(--ink-2); font-
 <div class="wrap">
 <h1>Reckon: knowledge map and collection health</h1>
 <p class="sub">Two questions in one page. Is the pipeline collecting what we think it is, and given what it collected, who demonstrably understands which part of the codebase, and how stale is that.</p>
-${renderHealth(m.findings)}
-${renderScope(m, now)}
-${renderFunnel(m)}
 ${renderArchitecture(m, now)}
-${renderAreaMap(m.areas, now)}
 ${renderMatrix(m.areas, now)}
 ${renderProfiles(m.profiles, now)}
+${renderAreaMap(m.areas, now)}
+${renderHealth(m.findings)}
+${renderFunnel(m)}
+${renderScope(m, now)}
 </div>
+
+<script>
+/* Diagram interaction. Progressive enhancement only: every class this toggles has a sane default,
+   so with scripting off the full graph, the panel hint and the table views are all still there.
+   Scoped per <figure>, since a multi-repo report draws more than one. */
+for (const fig of document.querySelectorAll('.diagram')) {
+  const svg = fig.querySelector('svg');
+  const canvas = fig.querySelector('.diag-canvas');
+  const panel = fig.querySelector('.diag-panel');
+  const hint = fig.querySelector('.panel-hint');
+  if (!svg || !canvas || !panel) continue;
+
+  const nodes = [...fig.querySelectorAll('.gnode')];
+  const edges = [...fig.querySelectorAll('.dep')];
+  const panels = [...fig.querySelectorAll('.panel-body')];
+  const byId = new Map(nodes.map((n) => [n.dataset.id, n]));
+
+  /* Adjacency straight off the rendered edges, so the highlight can never disagree with what is
+     drawn. */
+  const near = new Map(nodes.map((n) => [n.dataset.id, new Set([n.dataset.id])]));
+  for (const e of edges) {
+    near.get(e.dataset.from)?.add(e.dataset.to);
+    near.get(e.dataset.to)?.add(e.dataset.from);
+  }
+
+  let pinned = null;
+
+  function showPanel(id) {
+    hint.hidden = !!id;
+    for (const p of panels) p.hidden = p.dataset.panel !== id;
+  }
+
+  function focus(id) {
+    if (!id) {
+      fig.classList.remove('is-focused');
+      for (const n of nodes) n.classList.remove('hi', 'hi-near', 'sel');
+      for (const e of edges) e.classList.remove('hi');
+      showPanel(pinned);
+      if (pinned) applyFocus(pinned);
+      return;
+    }
+    applyFocus(id);
+    showPanel(id);
+  }
+
+  function applyFocus(id) {
+    const set = near.get(id) || new Set([id]);
+    fig.classList.add('is-focused');
+    for (const n of nodes) {
+      const isSelf = n.dataset.id === id;
+      n.classList.toggle('hi', isSelf);
+      n.classList.toggle('hi-near', !isSelf && set.has(n.dataset.id));
+      n.classList.toggle('sel', n.dataset.id === pinned);
+    }
+    for (const e of edges) e.classList.toggle('hi', e.dataset.from === id || e.dataset.to === id);
+  }
+
+  function pin(id) {
+    pinned = pinned === id ? null : id;
+    if (pinned) { applyFocus(pinned); showPanel(pinned); }
+    else { fig.classList.remove('is-focused');
+           for (const n of nodes) n.classList.remove('hi', 'hi-near', 'sel');
+           for (const e of edges) e.classList.remove('hi');
+           showPanel(null); }
+  }
+
+  for (const n of nodes) {
+    n.addEventListener('mouseenter', () => { if (!pinned) focus(n.dataset.id); });
+    n.addEventListener('mouseleave', () => { if (!pinned) focus(null); });
+    n.addEventListener('focus', () => focus(pinned || n.dataset.id));
+    n.addEventListener('click', (ev) => { ev.stopPropagation(); pin(n.dataset.id); });
+    n.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pin(n.dataset.id); }
+    });
+  }
+
+  /* Panel chips walk the graph: click a dependency to jump to it and scroll it into view. */
+  panel.addEventListener('click', (ev) => {
+    const chip = ev.target.closest('[data-goto]');
+    if (!chip) return;
+    const target = byId.get(chip.dataset.goto);
+    if (!target) return;
+    pinned = chip.dataset.goto;
+    applyFocus(pinned);
+    showPanel(pinned);
+    target.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+  });
+
+  canvas.addEventListener('click', (ev) => { if (!ev.target.closest('.gnode')) pin(null); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && pinned) pin(null); });
+
+  /* Status filters. Additive: no button pressed means show everything. */
+  const active = new Set();
+  for (const btn of fig.querySelectorAll('.filter')) {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.filter;
+      if (active.has(k)) active.delete(k); else active.add(k);
+      btn.setAttribute('aria-pressed', String(active.has(k)));
+      fig.classList.toggle('is-filtered', active.size > 0);
+      const keep = new Set();
+      for (const n of nodes) {
+        const tone = [...n.classList].find((c) => c.startsWith('tone-'));
+        const status = ({ 'tone-critical': 'unexplained', 'tone-serious': 'stale',
+                          'tone-warning': 'single-point', 'tone-good': 'covered' })[tone];
+        const on = active.size === 0 || active.has(status);
+        n.classList.toggle('out', !on);
+        if (on) keep.add(n.dataset.id);
+      }
+      for (const e of edges) e.classList.toggle('out', !(keep.has(e.dataset.from) && keep.has(e.dataset.to)));
+    });
+  }
+
+  /* Zoom. The SVG keeps its intrinsic size and is scaled, so the scroll container keeps working
+     and nothing reflows. */
+  const baseW = svg.viewBox.baseVal.width, baseH = svg.viewBox.baseVal.height;
+  let scale = 1;
+  function apply() {
+    svg.style.transform = 'scale(' + scale + ')';
+    svg.style.width = baseW + 'px';
+    svg.style.height = baseH + 'px';
+    canvas.style.setProperty('--zh', (baseH * scale) + 'px');
+    svg.parentElement.style.height = (baseH * scale) + 'px';
+    svg.parentElement.style.width = (baseW * scale) + 'px';
+  }
+  const MIN_FIT = 0.7;
+  function fit() {
+    scale = Math.max(MIN_FIT, Math.min(1, (canvas.clientWidth - 8) / baseW));
+    apply();
+  }
+  for (const b of fig.querySelectorAll('[data-zoom]')) {
+    b.addEventListener('click', () => {
+      const k = b.dataset.zoom;
+      if (k === 'in') scale = Math.min(2.5, scale * 1.25);
+      else if (k === 'out') scale = Math.max(0.25, scale / 1.25);
+      else return fit();
+      apply();
+    });
+  }
+  fit();
+  addEventListener('resize', fit);
+}
+</script>
 </body>
 </html>`;
 }

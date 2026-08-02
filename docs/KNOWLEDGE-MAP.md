@@ -155,13 +155,37 @@ finding, so it can be wired into a scheduled job later.
 ```
 
 ```
-  src/report/layout.ts   deterministic force-directed layout for the diagram. Deterministic is
-                         the requirement, not a nicety: Math.random would move every box on every
-                         run, so two reports of the same unchanged codebase would look like
-                         different systems. Seeded positionally (rank order on a golden-angle
-                         spiral, hubs nearer the centre), then a separation pass that pushes
-                         overlapping BOXES apart, since FR lays out points and these are labels.
+  src/report/layout.ts   LAYERED (Sugiyama-style) layout: break cycles, assign layers by longest
+                         path from the sinks, insert dummy nodes so a long edge routes AROUND the
+                         boxes it spans, barycentre sweeps to cut crossings, then straighten.
+                         Layer 0 is the BOTTOM, so every arrow points down into what it depends
+                         on and the foundations of the codebase are the foundation of the picture.
+                         Deterministic throughout (no Math.random), so the same codebase always
+                         draws the same diagram and two reports are comparable.
 ```
+
+A force-directed layout came first and was the wrong tool. Force layouts optimise for even
+spacing, so a dependency graph comes out as a blob with no reading order, edges crossing in every
+direction, and no way to tell an entry point from a leaf utility. A dependency graph has an
+inherent direction, and showing it is most of the readability.
+
+The diagram is the page's headline and renders first. Interaction is not decoration, since a
+static 20-node graph is unreadable however it is laid out:
+
+```
+  hover a box     isolate it and its immediate neighbours, dim the rest
+  click           pin that, and open a panel: status, who holds it, size, fan-in, what it
+                  depends on, what depends on it, and every demonstration with its PR link
+  panel chips     walk the graph, jumping to a dependency and scrolling it into view
+  legend          doubles as a status filter (additive; none pressed shows everything)
+  zoom            fit / in / out, floored so auto-fit never shrinks labels below legible;
+                  past that it scrolls, because a graph you pan beats a graph you cannot read
+  keyboard        every box is tabbable, Enter pins, Escape clears
+```
+
+All of it is progressive enhancement: plain CSS classes toggled by a small inline script. With
+scripting off, the full graph, the panel hint and the table views are all still there. The old
+card grid survives as a collapsed list view, which is also the no-colour fallback.
 
 Sections: **collection health**, what is in the database, **usage funnel** (PRs seen → gated →
 answered → passed, with skip reasons), **the architecture diagram**, **the area map**, **who

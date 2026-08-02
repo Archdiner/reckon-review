@@ -125,7 +125,10 @@ Changed decisions → re-gate. Closes the "pass then push slop" hole.
   (visualization)    self-contained HTML file: collection health, usage funnel, the ARCHITECTURE
                      DIAGRAM (from the persisted area graph, coloured by comprehension), the area
                      map, a person x area matrix, domain profiles. layout.ts is a deterministic
-                     force layout (no Math.random, so the same codebase draws the same);
+                     LAYERED graph layout (cycle break, longest-path layering, dummy-node edge
+                     routing, barycentre ordering; no Math.random, so the same codebase draws the
+                     same picture). The diagram is interactive: hover isolates, click pins and
+                     opens a detail panel, the legend filters;
                      links.ts turns stored provenance into GitHub URLs so every score, every
                      demonstration and every finding opens the PR behind it. `npm run report`,
                      or `npm run report:demo`. Never writes.
