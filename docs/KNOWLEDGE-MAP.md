@@ -22,9 +22,10 @@ category to compare across repos, and a decay model.
 
 ## 2. Two axes
 
-A demonstration is tagged on both, at write time, because neither input survives to read time (the
-changed paths live on a checkpoint that cascade-purges on uninstall; the explanation is never
-stored at all). A durable record has to carry its own categorization.
+A demonstration is tagged on both, at write time, because neither input is DURABLE: the changed
+paths live on a checkpoint and the explanation on an attempt, and both cascade-purge on uninstall.
+A record that outlives the install has to carry its own categorization. (Both are therefore still
+recoverable for a currently-installed account, which is what `npm run backfill` uses.)
 
 ```
   AXIS 1 — AREA (where)                    src/knowledge/areas.ts
@@ -133,6 +134,8 @@ importance, never the identity.
   npm run report              → reckon-report.html   (reads SUPABASE_URL / SUPABASE_SECRET_KEY)
   npm run report -- --json    → also dumps the model as JSON
   npm run report:demo         → renders a synthetic snapshot, no database needed
+  npm run backfill            → dry run: what could be recovered for PRs that already happened
+  npm run backfill -- --apply → write it (also needs APP_ID + PRIVATE_KEY_PATH)
 ```
 
 One self-contained HTML file: inline CSS, no CDN, no chart library, opens from a `file://` path.
@@ -213,9 +216,13 @@ Each finding carries a fix, because a finding with no fix is a complaint rather 
   is correct, but there is no notion yet of "the same subsystem across a fork".
 - **Reading is not understanding.** The map only knows what someone was made to explain at a gate.
   Someone who has read a subsystem carefully and never touched it in a PR is invisible on it.
-- **Backfill is partly impossible.** `area` derives from changed paths, so any checkpoint that
-  recorded its files can be recomputed. `domains` derives from the explanation, which is never
-  stored, so pre-existing demonstrations can only be keyword-classified from concept and summary.
+- **Backfill is partly possible** (`npm run backfill`, dry by default, `--apply` to write).
+  Changed paths and PR authors come back from the GitHub API for every gate ever opened, and
+  `area` follows from them. `domains` gets classified from `attempts.explanation`, which is still
+  there for any install that has not been removed. What cannot come back: skipped PRs were never
+  written at all, so the funnel is accurate forward and not backward; `area_graph` is newest-wins
+  and the next gate fills it for free; closeout verdicts were never computed for those gates, so
+  those demonstrations keep the neutral unverdicted score rather than an invented judgement.
 - **The dev-time half is empty** unless the reckon-mcp host is deployed and forwarding. Nothing in
   this repo writes `mcp_events`; the report says so rather than showing a silent zero.
 - **The diagram is TS/JS only**, and its edges are name-based, so coupling is a lower bound

@@ -220,8 +220,9 @@ default; until an install re-consents, `ensureReckonRuleset` 403s and Reckon sta
 ```
 
 Deploy: push to `main` → GitHub Actions (`.github/workflows/fly-deploy.yml`) → `flyctl deploy`.
-Schema changes are applied to Supabase manually (SQL editor); the app degrades gracefully if a
-new table isn't applied yet (e.g. the durable-record write is best-effort). Writes that use a
+Schema changes are applied to Supabase manually (SQL editor). Each one ships as an idempotent
+delta under `db/migrations/` (paste and run; safe to re-run), with `db/schema.sql` remaining the
+source of truth for the full shape. The app degrades gracefully if a new table isn't applied yet (e.g. the durable-record write is best-effort). Writes that use a
 late-added COLUMN retry without it and log, so a deploy landing before its migration degrades to
 the old column set rather than failing on the merge path. `npm run report` names any column that
 is still missing, which is the only way that silent fallback is visible.

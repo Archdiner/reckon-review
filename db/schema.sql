@@ -162,9 +162,11 @@ create index if not exists mcp_events_subsystem_idx on mcp_events(subsystem);
 -- DENORMALIZED text copy for exactly that reason — it stays intact after the source repo row is
 -- gone. Deletion of this record is user-initiated (store.deleteUserRecord), not tied to uninstall.
 -- The TWO AXES (src/knowledge/*) are stamped here at write time, not derived at read time,
--- because both inputs are gone by then: `area` needs the PR's changed paths (which live on a
--- checkpoint that cascade-purges on uninstall) and `domains` needs the explanation (which is
--- never stored durably at all). A durable record has to carry its own categorization.
+-- because neither input is DURABLE: `area` needs the PR's changed paths and `domains` needs the
+-- explanation, and both live on install-scoped rows (checkpoints, attempts) that cascade-purge on
+-- uninstall. A record that outlives the install has to carry its own categorization.
+-- (Both are therefore recoverable for a still-installed account, which is what `npm run backfill`
+-- does; they are gone for good only once the install is removed.)
 --   area    = WHERE, one repo's subsystem. The team map, the architecture overlay.
 --   domains = WHAT KIND, portable across repos. The person's skill profile.
 create table if not exists demonstrations (

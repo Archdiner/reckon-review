@@ -9,7 +9,8 @@
     "start": "probot run ./dist/app.js",
     "roundtrip": "tsx src/roundtrip.ts",
     "report": "tsx src/report/cli.ts",
-    "report:demo": "tsx src/report/demo.ts"
+    "report:demo": "tsx src/report/demo.ts",
+    "backfill": "tsx src/report/backfill.ts"
   },
   "dependencies": {
     "@reckon/core": "file:vendor/reckon-core-0.5.0.tgz",
