@@ -65,8 +65,8 @@ const installCtx = (octokit: any, repos: any[]) => ({
   payload: { installation: { id: INST, account: { login: 'reckon-test' } }, repositories: repos },
 });
 
-const prCtx = (octokit: any) => ({ octokit, payload: {
-  pull_request: { number: PR, node_id: 'PR_x', head: { sha: 'sha1' }, draft: false },
+const prCtx = (octokit: any, sha = 'sha1', number = PR) => ({ octokit, payload: {
+  pull_request: { number, node_id: 'PR_x', head: { sha }, draft: false, user: { login: 'bob', id: 2, type: 'User' } },
   repository: { id: REPO, name: 'roundtrip', full_name: 'reckon-test/roundtrip', default_branch: 'main', owner: { login: 'reckon-test', type: 'User' } },
   installation: { id: INST },
 }});
@@ -104,6 +104,24 @@ async function main() {
   step(!!cp && cp.status === 'pending', 'PR opened → pending checkpoint persisted');
   step(o1.calls.checksCreated.length === 1 && o1.calls.checksCreated[0].status === 'in_progress', 'pending (merge-blocking) check created');
   step(o1.calls.comments.length === 1 && /explain to merge/i.test(o1.calls.comments[0]), 'elicit comment posted');
+  // The change is recorded with the spine the knowledge map is built on, not just its decisions.
+  step(!!cp && Array.isArray(cp.areas) && cp.areas.length > 0, 'gate records its areas (the knowledge-map spine)', `areas=${JSON.stringify(cp?.areas)}`);
+  step(!!cp && Array.isArray(cp.files) && cp.files!.length > 0, 'gate records its changed files');
+  step(cp?.author_login === 'bob', 'gate records the PR author (install-scoped, not the durable users table)');
+
+  // 1b. REDELIVERY of the same head → dropped before any spend. GitHub delivers at-least-once,
+  //     and without this the checkpoint insert trips the (repo, pr, head) unique index.
+  const o1b = fakeOctokit(['src/webhook.ts']);
+  await onPullRequestOpened(prCtx(o1b.octokit), deps);
+  step(o1b.calls.comments.length === 0 && o1b.calls.checksCreated.length === 0, 'redelivery on the same head → no duplicate gate');
+
+  // 1c. A trivial PR is DECIDED and RECORDED, not silently dropped. Without this row the funnel
+  //     has no denominator: you cannot tell how many PRs Reckon saw versus gated.
+  const oT = fakeOctokit(['README.md']);
+  await onPullRequestOpened(prCtx(oT.octokit, 'sha-triv', PR + 1), deps);
+  const triv = await store.findLatestCheckpoint(REPO, PR + 1);
+  step(triv?.status === 'trivial' && !!triv?.skip_reason, 'trivial PR → recorded as a skip outcome', `reason=${triv?.skip_reason ?? 'none'}`);
+  step(oT.calls.checksCreated.some((c) => c.conclusion === 'success'), 'trivial PR → success check, no gate');
 
   // 2. SLOP comment → fail → rescue, stays blocked
   const o2 = fakeOctokit([]);
@@ -122,12 +140,21 @@ async function main() {
   const after = await store.getCheckpoint(cp!.id);
   step(after?.status === 'passed' && after?.passed_by === 'alice', 'GOOD → checkpoint marked passed by alice');
   step(o3.calls.comments.some((b) => /you explained it\. merge unblocked/i.test(b)), 'GOOD → pass comment posted');
+  // The durable record, tagged on both axes of the knowledge map.
+  const dems = await store.listDemonstrations(1);
+  step(dems.length > 0, 'GOOD → durable demonstrations written', `${dems.length} row(s)`);
+  step(dems.every((d) => d.area), 'demonstrations carry an area (axis 1: which subsystem)', `area=${dems[0]?.area ?? 'none'}`);
+  step(dems.some((d) => (d.domains ?? []).length > 0), 'demonstrations carry domains (axis 2: what kind of understanding)', `domains=${JSON.stringify(dems[0]?.domains ?? [])}`);
 
   // 4. Uninstall → purge. Drives the real handler (not a raw store call) so the retention
   //    guarantee is tested end to end, and doubles as this test's cleanup.
   await onInstallationDeleted({ octokit: null, payload: { installation: { id: INST } } }, deps);
   const purged = await store.findLatestCheckpoint(REPO, PR);
   step(purged === null, 'uninstall → all gate data purged (checkpoint + attempts gone)');
+  // The durable record is the deliberate exception, so clean it up explicitly.
+  step((await store.listDemonstrations(1)).length > 0, 'uninstall → the personal record SURVIVES (by design)');
+  await store.deleteUserRecord(1);
+  step((await store.listDemonstrations(1)).length === 0, 'deleteUserRecord → the personal record is gone on request');
 
   console.log(`\n==> HANDLERS: ${failed ? 'FAIL' : 'PASS — full PR gate flow works (pending → rescue → pass → purge)'}`);
   process.exit(failed ? 1 : 0);

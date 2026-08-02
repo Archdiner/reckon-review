@@ -34,7 +34,26 @@ create table if not exists checkpoints (
   decisions       jsonb not null default '[]',-- decompose() output (the sub-problems)
   decisions_hash  text not null,              -- carry-forward test on synchronize
   rigor           text not null default 'medium',
-  status          text not null default 'pending', -- pending|passed|trivial|error
+  -- Every outcome is a row, including the ones we skip. 'trivial'/'peripheral'/'capped' rows
+  -- cost no model call but are what make the funnel (PRs seen -> gated -> answered -> passed)
+  -- and the drift half-life measurable at all; without them a skip is invisible.
+  status          text not null default 'pending', -- pending|passed|trivial|peripheral|capped|error
+  skip_reason     text,                       -- why a non-gated outcome was skipped
+  -- What the change was ABOUT, recorded at gate time. `areas` is the stable subsystem spine the
+  -- per-PR concept slugs get projected onto (src/knowledge/areas.ts); without it a demonstration
+  -- cannot be placed on the architecture, and freshness has no drift signal to decay against.
+  files           jsonb not null default '[]',-- changed paths
+  areas           jsonb not null default '[]',-- derived subsystem keys
+  -- Who opened the PR. Deliberately kept HERE and not in the durable `users` table: an author
+  -- whose PR we merely scanned has not chosen to interact with Reckon, so their identity lives
+  -- with the install-scoped data that cascade-purges on uninstall. `users` is reserved for
+  -- people who actually engaged (replied with an explanation), whose record is durable.
+  author_login    text,
+  author_id       bigint,
+  hub_count       integer not null default 0, -- changed files with fan-in >= HUB_FANIN
+  core_count      integer not null default 0, -- changed files tiered 'core'
+  graph_used      boolean not null default false, -- did the structural context actually build
+  graph_ms        integer,                    -- how long it took (cost/latency observability)
   passed_by       text,                       -- github login who passed (audit)
   passed_by_id    bigint,
   passed_at       timestamptz,
@@ -47,6 +66,17 @@ create unique index if not exists checkpoints_pr_head_idx on checkpoints(repo_id
 -- Idempotent migration for already-live DBs (the create-table-if-not-exists above won't add
 -- new columns to an existing table). Safe to re-run.
 alter table checkpoints add column if not exists closeout jsonb;
+alter table checkpoints add column if not exists skip_reason text;
+alter table checkpoints add column if not exists files jsonb not null default '[]';
+alter table checkpoints add column if not exists areas jsonb not null default '[]';
+alter table checkpoints add column if not exists hub_count integer not null default 0;
+alter table checkpoints add column if not exists core_count integer not null default 0;
+alter table checkpoints add column if not exists graph_used boolean not null default false;
+alter table checkpoints add column if not exists graph_ms integer;
+alter table checkpoints add column if not exists author_login text;
+alter table checkpoints add column if not exists author_id bigint;
+-- The funnel and the drift count are both "checkpoints in this repo, recent first" scans.
+create index if not exists checkpoints_repo_created_idx on checkpoints(repo_id, created_at desc);
 
 -- Every explanation attempt + its grade (conversation + audit trail)
 create table if not exists attempts (
@@ -72,9 +102,11 @@ create index if not exists attempts_checkpoint_idx on attempts(checkpoint_id);
 -- PR gate already records it (attempts.reviewer_id, checkpoints.passed_by_id), and the MCP host
 -- now stamps it on every event it forwards. These two tables are where the surfaces meet.
 
--- The identity that spans both surfaces. Upserted from whichever surface sees the user first
--- (a forwarded MCP event, or — future — the PR handlers). A profile anchor: "this github_id is
--- a Reckon user" independent of any single repo or PR.
+-- The identity that spans both surfaces. Upserted from whichever surface sees the user first:
+-- a forwarded MCP event, or the PR handlers, which promote EVERYONE Reckon actually interacts
+-- with (the PR author at gate time, and anyone who replies with an explanation), not only the
+-- people who eventually pass. Populating it on pass alone made this table a subset of
+-- `demonstrations` and told you nothing about reach or drop-off.
 create table if not exists users (
   github_id     bigint primary key,          -- the cross-surface join key
   github_login  text,
@@ -121,6 +153,12 @@ create index if not exists mcp_events_subsystem_idx on mcp_events(subsystem);
 -- cascade-purges on uninstall; this does not). Provenance (repo_full_name, pr_number) is a
 -- DENORMALIZED text copy for exactly that reason — it stays intact after the source repo row is
 -- gone. Deletion of this record is user-initiated (store.deleteUserRecord), not tied to uninstall.
+-- The TWO AXES (src/knowledge/*) are stamped here at write time, not derived at read time,
+-- because both inputs are gone by then: `area` needs the PR's changed paths (which live on a
+-- checkpoint that cascade-purges on uninstall) and `domains` needs the explanation (which is
+-- never stored durably at all). A durable record has to carry its own categorization.
+--   area    = WHERE, one repo's subsystem. The team map, the architecture overlay.
+--   domains = WHAT KIND, portable across repos. The person's skill profile.
 create table if not exists demonstrations (
   id              uuid primary key default gen_random_uuid(),
   github_id       bigint not null,            -- durable owner + join key (users.github_id)
@@ -129,9 +167,16 @@ create table if not exists demonstrations (
   summary         text,                       -- what the topic was
   verdict         text,                       -- strong | solid | thin | null (from the closeout)
   note            text,                       -- the grader's per-topic note, if any
+  area            text,                       -- axis 1: repo subsystem key (knowledge/areas.ts)
+  domains         jsonb not null default '[]',-- axis 2: closed-vocab domains (knowledge/domains.ts)
   repo_full_name  text,                       -- denormalized provenance (survives repo purge)
   pr_number       integer,
+  head_sha        text,                       -- which commit the understanding was OF
   demonstrated_at timestamptz not null default now()
 );
 create index if not exists demonstrations_github_idx on demonstrations(github_id);
 create index if not exists demonstrations_concept_idx on demonstrations(concept);
+create index if not exists demonstrations_area_idx on demonstrations(repo_full_name, area);
+alter table demonstrations add column if not exists area text;
+alter table demonstrations add column if not exists domains jsonb not null default '[]';
+alter table demonstrations add column if not exists head_sha text;

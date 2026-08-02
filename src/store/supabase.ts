@@ -16,7 +16,16 @@ export interface CheckpointRow {
   decisions: unknown;
   decisions_hash: string;
   rigor: string;
-  status: string; // pending | passed | trivial | error
+  status: string; // pending | passed | trivial | peripheral | capped | error
+  skip_reason: string | null;
+  files: string[] | null;
+  areas: string[] | null;
+  hub_count: number | null;
+  core_count: number | null;
+  graph_used: boolean | null;
+  graph_ms: number | null;
+  author_login: string | null;
+  author_id: number | null;
   passed_by: string | null;
   passed_by_id: number | null;
   passed_at: string | null;
@@ -34,6 +43,16 @@ export interface NewCheckpoint {
   decisions: unknown;
   decisions_hash: string;
   rigor: string;
+  status?: string;
+  skip_reason?: string;
+  files?: string[];
+  areas?: string[];
+  hub_count?: number;
+  core_count?: number;
+  graph_used?: boolean;
+  graph_ms?: number | null;
+  author_login?: string | null;
+  author_id?: number | null;
 }
 
 export interface NewAttempt {
@@ -57,8 +76,11 @@ export interface NewDemonstration {
   summary?: string;
   verdict?: string | null; // strong | solid | thin | null
   note?: string;
+  area?: string | null; // axis 1: repo subsystem (knowledge/areas.ts)
+  domains?: string[]; // axis 2: portable knowledge domains (knowledge/domains.ts)
   repo_full_name?: string;
   pr_number?: number;
+  head_sha?: string;
 }
 
 export class SupabaseStore {
@@ -83,10 +105,49 @@ export class SupabaseStore {
     if (error) throw new Error(`upsertRepo: ${error.message}`);
   }
 
+  /** Columns added after the first deploy. A Supabase migration is applied by hand, so a deploy
+   *  can legitimately land before the SQL does; every write that uses one of these degrades to
+   *  the pre-migration column set rather than failing. Only `createCheckpoint` is on the merge
+   *  path, and it is the one that must never fail for a reason as cosmetic as a missing column. */
+  private static readonly LATE_CHECKPOINT_COLS = ['skip_reason', 'files', 'areas', 'hub_count', 'core_count', 'graph_used', 'graph_ms', 'author_login', 'author_id'] as const;
+
+  private static isMissingColumn(message: string): boolean {
+    return /column .* does not exist|could not find the .* column/i.test(message);
+  }
+
+  private static strip<T extends object>(o: T, keys: readonly string[]): T {
+    const copy: any = { ...o };
+    for (const k of keys) delete copy[k];
+    return copy as T;
+  }
+
   async createCheckpoint(c: NewCheckpoint): Promise<CheckpointRow> {
     const { data, error } = await this.db.from('checkpoints').insert(c).select().single();
-    if (error) throw new Error(`createCheckpoint: ${error.message}`);
-    return data as CheckpointRow;
+    if (!error) return data as CheckpointRow;
+    if (!SupabaseStore.isMissingColumn(error.message)) throw new Error(`createCheckpoint: ${error.message}`);
+
+    console.warn('createCheckpoint: new columns absent, writing the pre-migration set (run db/schema.sql)');
+    const lean = SupabaseStore.strip(c, SupabaseStore.LATE_CHECKPOINT_COLS);
+    const retry = await this.db.from('checkpoints').insert(lean).select().single();
+    if (retry.error) throw new Error(`createCheckpoint: ${retry.error.message}`);
+    return retry.data as CheckpointRow;
+  }
+
+  /**
+   * Record a PR we deliberately did NOT gate (trivial, peripheral, over the daily cap). No model
+   * call, so it is nearly free, and it is the difference between "we gated 12 PRs" and "we saw
+   * 96 PRs, gated 12, and here is why the other 84 were skipped". It also feeds drift: a skipped
+   * PR still moved the code, so it still ages every demonstration in the areas it touched.
+   *
+   * Best-effort by construction: this runs on paths that have already told GitHub the check is
+   * green, so a failure here is logged and swallowed, never surfaced.
+   */
+  async recordSkip(c: NewCheckpoint & { status: string; skip_reason: string }): Promise<void> {
+    try {
+      await this.createCheckpoint(c);
+    } catch (err: any) {
+      console.warn(`recordSkip: ${err?.message || err}`);
+    }
   }
 
   /** The pending checkpoint for a PR (the gate a reviewer's explanation resolves). */
@@ -236,11 +297,54 @@ export class SupabaseStore {
     if (error) throw new Error(`upsertUser: ${error.message}`);
   }
 
-  /** Append demonstrated-understanding rows (one per topic on a passed gate). */
+  /** Append demonstrated-understanding rows (one per topic on a passed gate). Degrades to the
+   *  pre-migration column set rather than losing the whole write to a missing column. */
   async recordDemonstrations(rows: NewDemonstration[]): Promise<void> {
     if (rows.length === 0) return;
     const { error } = await this.db.from('demonstrations').insert(rows);
-    if (error) throw new Error(`recordDemonstrations: ${error.message}`);
+    if (!error) return;
+    if (!SupabaseStore.isMissingColumn(error.message)) throw new Error(`recordDemonstrations: ${error.message}`);
+
+    console.warn('recordDemonstrations: new columns absent, writing the pre-migration set (run db/schema.sql)');
+    const lean = rows.map((r) => SupabaseStore.strip(r, ['area', 'domains', 'head_sha']));
+    const retry = await this.db.from('demonstrations').insert(lean);
+    if (retry.error) throw new Error(`recordDemonstrations: ${retry.error.message}`);
+  }
+
+  /**
+   * How many substantive changes landed in these areas since a timestamp. The DRIFT half-life
+   * input (src/knowledge/freshness.ts): understanding decays because the code moved, and this
+   * is the measurement of "moved".
+   *
+   * Counts gated and capped outcomes only. A 'trivial' or 'peripheral' skip by definition
+   * touched nothing load-bearing, so it must not age anyone's understanding, or every README
+   * typo would erode the map.
+   */
+  async countAreaChangesSince(repo_id: number, sinceIso: string): Promise<Map<string, number>> {
+    const { data, error } = await this.db
+      .from('checkpoints')
+      .select('areas, status, created_at')
+      .eq('repo_id', repo_id)
+      .gte('created_at', sinceIso)
+      .in('status', ['pending', 'passed', 'capped', 'error']);
+    if (error) throw new Error(`countAreaChangesSince: ${error.message}`);
+    const counts = new Map<string, number>();
+    for (const row of (data ?? []) as any[]) {
+      for (const a of (row.areas ?? []) as string[]) counts.set(a, (counts.get(a) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  /** A person's durable record, newest first. Used by the integration test and available to any
+   *  future record surface; the report reads through its own query layer, not this one. */
+  async listDemonstrations(github_id: number): Promise<NewDemonstration[]> {
+    const { data, error } = await this.db
+      .from('demonstrations')
+      .select('*')
+      .eq('github_id', github_id)
+      .order('demonstrated_at', { ascending: false });
+    if (error) throw new Error(`listDemonstrations: ${error.message}`);
+    return (data ?? []) as NewDemonstration[];
   }
 
   /** Delete a person's durable record on request (the honest counterpart to persistence — the

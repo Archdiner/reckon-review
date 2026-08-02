@@ -1,9 +1,10 @@
 # Reckon Review — architecture
 
-**Status:** current (reflects the deployed system) · **Last updated:** 2026-07-25
+**Status:** current (reflects the deployed system) · **Last updated:** 2026-08-02
 **What this is:** the *how* — event flow, subsystems, schema, GitHub App, deploy. Rationale
-lives in the README (positioning) and inline code comments. Two companion planning docs:
-`CODEBASE-GRAPH.md` (the graph feature) and `RECORD-SURFACE-PLAN.md` (the dashboard).
+lives in the README (positioning) and inline code comments. Companion docs:
+`CODEBASE-GRAPH.md` (the graph feature), `KNOWLEDGE-MAP.md` (the two-axis taxonomy, freshness
+and the report), and `RECORD-SURFACE-PLAN.md` (the eventual hosted dashboard).
 
 ---
 
@@ -42,19 +43,28 @@ re-triggers.
 
 ## 3. The gate pipeline
 
-**Open a gate** (`onPullRequestOpened`, and the re-gate branch of `onPullRequestSynchronize`):
+**Open a gate** — ONE path (`runGate`) shared by `opened` and `synchronize`. These were two
+~90% identical copies; every change had to be made twice, and any miss meant a re-push silently
+behaved differently from a first open.
 
 ```
-  fetch files + diff
-    → classify(): trivial (docs/lockfiles/tiny) ────────────► SUCCESS check, done
-    → POLICY A: all changed files peripheral by path ───────► SUCCESS check, done
+  same head as the last recorded outcome? ───────────────► duplicate delivery, bail
+  fetch files + diff → derive areas (the subsystem spine)
+    → classify(): trivial (docs/lockfiles/tiny) ────────────► SUCCESS check + 'trivial' row
+    → POLICY A: all changed files peripheral by path ───────► SUCCESS check + 'peripheral' row
        (styles/assets/tests/config; any .ts/.js logic = core → gates)
-    → daily cost cap hit ──────────────────────────────────► NEUTRAL check, done
+    → daily cost cap hit ──────────────────────────────────► NEUTRAL check + 'capped' row
     → structuralContext(): tarball → codebase graph → criticality + who-references-what
     → decompose( diffDigest(diff) + structural context ) → 2-4 clustered decisions
     → POLICY B: any changed file is a hub (fan-in >= 8) → rigor = 'harsh', else 'medium'
+    → decisions unchanged since a pass? ────────────────────► carry forward onto the new head
     → PENDING check (blocks merge) + elicit comment + persist checkpoint
 ```
+
+**Every exit writes a row**, including the skips (which cost no model call). A skipped PR used to
+leave no trace, which made the most basic usage question unanswerable: of the PRs Reckon saw, how
+many did it gate, and why not the rest. The skip rows are also what drives freshness decay, since a
+skipped PR still moved the code.
 
 **Grade a reply** (`onIssueComment`): a reviewer (OWNER/MEMBER/COLLABORATOR) reply ≥40 chars →
 grade the **cumulative** explanation (all prior replies + this one) against the checkpoint's
@@ -99,6 +109,18 @@ Changed decisions → re-gate. Closes the "pass then push slop" hole.
 
   purge              installation.deleted / repos.removed → cascade-delete the account/repo's
                      checkpoints + attempts (the durable record persists; delete on request).
+
+  knowledge map      src/knowledge/* — the two axes a demonstration is tagged on at write time.
+  (areas/domains/    areas.ts: WHERE, a repo subsystem derived deterministically from changed
+   freshness)        paths (renamed per-repo at read time). domains.ts: WHAT KIND, a closed
+                     16-term vocabulary tagged by the closeout call. freshness.ts: decay by age
+                     AND by drift (substantive changes landed in that area since). See
+                     KNOWLEDGE-MAP.md.
+
+  report             src/report/* — offline, read-only. Pulls the whole database and renders one
+  (visualization)    self-contained HTML file: collection health, usage funnel, the area map, a
+                     person x area matrix, domain profiles per person. `npm run report`, or
+                     `npm run report:demo` against a synthetic snapshot. Never writes.
 ```
 
 Everything off the merge path (closeout, durable record, graph) is **best-effort**: any failure
@@ -111,13 +133,20 @@ is logged and swallowed so it can never block or delay a merge.
 ```
   installations   the org/user that installed          ─┐ cascade on
   repos           active repos (+ parsed config)        ─┤ uninstall /
-  checkpoints     one gated PR (decisions, rigor, closeout, status)  ─┤ repo-removal
+  checkpoints     EVERY PR outcome: decisions, rigor, closeout, status  ─┤ repo-removal
+                  (pending|passed|trivial|peripheral|capped|error) +   ─┤
+                  files, areas, hub/core counts, graph timing, author  ─┤
   attempts        every explanation + its grade         ─┘
 
   users           cross-surface identity (github_id)    ─┐ DURABLE — not FK'd to
-  demonstrations  per-topic demonstrated understanding  ─┤ installations; the personal
+  demonstrations  per-topic understanding + area/domains─┤ installations; the personal
   mcp_events      dev-time events from reckon-mcp        ─┘ record outlives uninstall
 ```
+
+Two retention tiers, and which table a person's identity lands in follows from them. `users` holds
+people who ACTUALLY ENGAGED (replied to a gate with an explanation, pass or fail), and is durable.
+A PR author whose diff was merely scanned did not choose to interact, so their login stays on
+`checkpoints.author_login`, with the install-scoped data that purges on uninstall.
 
 Join key across surfaces: the **github numeric id** (`attempts.reviewer_id`,
 `checkpoints.passed_by_id`, `users.github_id`, `demonstrations.github_id`, `mcp_events.github_id`).
@@ -163,6 +192,8 @@ default; until an install re-consents, `ensureReckonRuleset` 403s and Reckon sta
     closeout.ts            the pass "deposit" (per-topic read)
     util.ts                classify() + helpers
     graph/                 extractor · repo-map · fetch · context · eval
+    knowledge/             areas · domains · freshness (the map's taxonomy + decay)
+    report/                query · model · render · cli · demo (the offline HTML report)
     grader/openai.ts       OpenAI backend for @reckon/core
     store/supabase.ts      all persistence
     handler-test.ts        live integration test (real Supabase + OpenAI)
@@ -181,7 +212,10 @@ default; until an install re-consents, `ensureReckonRuleset` 403s and Reckon sta
 
 Deploy: push to `main` → GitHub Actions (`.github/workflows/fly-deploy.yml`) → `flyctl deploy`.
 Schema changes are applied to Supabase manually (SQL editor); the app degrades gracefully if a
-new table isn't applied yet (e.g. the durable-record write is best-effort).
+new table isn't applied yet (e.g. the durable-record write is best-effort). Writes that use a
+late-added COLUMN retry without it and log, so a deploy landing before its migration degrades to
+the old column set rather than failing on the merge path. `npm run report` names any column that
+is still missing, which is the only way that silent fallback is visible.
 
 **Deploy gotcha (learned the hard way):** a successful deploy ≠ a healthy boot. Any new runtime
 import must be a production dependency (dev deps are omitted in the image). Verify the app is

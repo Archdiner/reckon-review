@@ -105,13 +105,20 @@ own words, the mechanism of what it changes.** Any PR, whoever (or whatever) wro
    reads   ▸ the PR's diff + the explanation comments + a snapshot of the repo's
              source at the PR head, IN MEMORY, to map how the change fits the codebase
    writes  ▸ a status check + comments on the PR
-   never   ▸ stores your source · persists the map · touches anything outside the repo
+   stores  ▸ the topics of the change, the explanations, and which FILE PATHS the PR
+             touched (paths only, never their contents)
+   never   ▸ stores your source · persists the codebase map · touches anything outside the repo
 ```
 
 > Reckon reads the repository's source at the PR's head commit to build a throwaway map of
 > how the change connects to the rest of the code (what references it, how load-bearing it is).
 > This map lives only for the few seconds it takes to generate the questions, then is discarded.
-> Nothing is stored, and the map is never persisted.
+> Your source is never stored and the map is never persisted.
+>
+> What is kept is the *shape* of the change: the changed file paths, the subsystems they roll up
+> to, and how many of them are load-bearing. That is what lets Reckon show which parts of a
+> codebase are demonstrably understood, and by whom. It purges with everything else when you
+> uninstall.
 
 ---
 

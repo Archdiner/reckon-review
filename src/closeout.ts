@@ -1,4 +1,5 @@
 import type { Decision, LlmBackend } from '@reckon/core';
+import { DOMAINS, normalizeDomains, type Domain } from './knowledge/domains.js';
 
 /**
  * The DEPOSIT (the rich close). A passing explanation is the highest-value moment Reckon
@@ -19,6 +20,11 @@ export interface TopicRead {
   concept: string;
   verdict: TopicVerdict;
   note: string; // one short line, specific to what they said
+  /** Axis 2 of the knowledge map: which portable engineering domains this topic sits in. Asked
+   *  for HERE because this call is already reading the explanation, so the tags cost nothing
+   *  extra, and because the explanation is never stored, so it cannot be tagged later. Closed
+   *  vocabulary; anything off the enum is dropped rather than invented. */
+  domains: Domain[];
 }
 
 export interface Closeout {
@@ -52,9 +58,15 @@ function closeoutSystemPrompt(decisions: Decision[]): string {
     'the place a senior engineer would have pushed further. Be specific to what they actually',
     'wrote; never generic ("good job", "clear explanation") — cite the actual idea.',
     '',
+    'ALSO tag each topic with 1-2 "domains": the portable kinds of engineering understanding it',
+    'demonstrates, so the same tag means the same thing in any codebase. Choose ONLY from this',
+    'exact list, and choose NOTHING if none genuinely fit (an empty array is correct and useful;',
+    'a wrong tag is not):',
+    `  ${DOMAINS.join(', ')}`,
+    '',
     'Respond with ONLY a JSON object (no prose, no code fences):',
     '{',
-    '  "topics": [ { "concept": "<the topic>", "verdict": "strong|solid|thin", "note": "<one specific line>" } ],',
+    '  "topics": [ { "concept": "<the topic>", "verdict": "strong|solid|thin", "note": "<one specific line>", "domains": ["<from the list>"] } ],',
     '  "strongest": "<one sentence naming their best-explained point>",',
     '  "growth_edge": "<one sentence: where they could have gone deeper>",',
     '  "one_line": "<warm one-liner of what the log now records they understand>"',
@@ -106,6 +118,7 @@ export async function closeout(
       concept: String(t?.concept || '').slice(0, 120),
       verdict: (VERDICTS.has(t?.verdict) ? t.verdict : 'solid') as TopicVerdict,
       note: String(t?.note || '').slice(0, 240),
+      domains: normalizeDomains(t?.domains),
     }))
     .filter((t: TopicRead) => t.concept);
 

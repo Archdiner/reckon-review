@@ -6,3 +6,6 @@ dist/
 *.pem
 *.log
 .DS_Store
+# Generated reports: they contain real logins, repo names and topic slugs from the database.
+reckon-report*.html
+reckon-report*.json
